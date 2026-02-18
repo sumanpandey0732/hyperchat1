@@ -14,13 +14,197 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      chat_members: {
+        Row: {
+          chat_id: string
+          id: string
+          joined_at: string
+          role: string | null
+          user_id: string
+        }
+        Insert: {
+          chat_id: string
+          id?: string
+          joined_at?: string
+          role?: string | null
+          user_id: string
+        }
+        Update: {
+          chat_id?: string
+          id?: string
+          joined_at?: string
+          role?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_members_chat_id_fkey"
+            columns: ["chat_id"]
+            isOneToOne: false
+            referencedRelation: "chats"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chats: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          group_avatar_url: string | null
+          group_name: string | null
+          id: string
+          is_group: boolean | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          group_avatar_url?: string | null
+          group_name?: string | null
+          id?: string
+          is_group?: boolean | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          group_avatar_url?: string | null
+          group_name?: string | null
+          id?: string
+          is_group?: boolean | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      contacts: {
+        Row: {
+          contact_user_id: string
+          created_at: string
+          id: string
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          contact_user_id: string
+          created_at?: string
+          id?: string
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          contact_user_id?: string
+          created_at?: string
+          id?: string
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      messages: {
+        Row: {
+          chat_id: string
+          content: string | null
+          created_at: string
+          file_name: string | null
+          file_type: string | null
+          file_url: string | null
+          id: string
+          reply_to: string | null
+          sender_id: string
+          status: string | null
+          type: string | null
+        }
+        Insert: {
+          chat_id: string
+          content?: string | null
+          created_at?: string
+          file_name?: string | null
+          file_type?: string | null
+          file_url?: string | null
+          id?: string
+          reply_to?: string | null
+          sender_id: string
+          status?: string | null
+          type?: string | null
+        }
+        Update: {
+          chat_id?: string
+          content?: string | null
+          created_at?: string
+          file_name?: string | null
+          file_type?: string | null
+          file_url?: string | null
+          id?: string
+          reply_to?: string | null
+          sender_id?: string
+          status?: string | null
+          type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_chat_id_fkey"
+            columns: ["chat_id"]
+            isOneToOne: false
+            referencedRelation: "chats"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_reply_to_fkey"
+            columns: ["reply_to"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          about: string | null
+          avatar_url: string | null
+          created_at: string
+          display_name: string
+          id: string
+          is_online: boolean | null
+          last_seen: string | null
+          phone: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          about?: string | null
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string
+          id?: string
+          is_online?: boolean | null
+          last_seen?: string | null
+          phone?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          about?: string | null
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string
+          id?: string
+          is_online?: boolean | null
+          last_seen?: string | null
+          phone?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_chat_member: {
+        Args: { _chat_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
