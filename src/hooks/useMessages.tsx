@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { showLocalNotification } from '@/lib/notifications';
 import type { Profile } from '@/contexts/AuthContext';
 
 export type Message = {
@@ -81,14 +82,12 @@ export const useMessages = (chatId: string | null) => {
 
         // Push notification if tab not focused
         if (document.hidden && newMsg.sender_id !== user?.id) {
-          if (Notification.permission === 'granted') {
-            const senderName = (profile as Profile)?.display_name || 'Someone';
-            new Notification(`New message from ${senderName}`, {
-              body: newMsg.content || '📎 Attachment',
-              icon: '/favicon.ico',
-              tag: chatId,
-            });
-          }
+          const senderName = (profile as Profile)?.display_name || 'Someone';
+          showLocalNotification(
+            `New message from ${senderName}`,
+            newMsg.content || '📎 Attachment',
+            chatId || undefined
+          );
         }
       })
       .on('postgres_changes', {
