@@ -140,7 +140,7 @@ const Index = () => {
         <AnimatedBackground />
         <div className="relative z-10 flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">Loading Nexus...</p>
+          <p className="text-sm text-muted-foreground">Loading HyperChat...</p>
         </div>
       </div>
     );

@@ -77,7 +77,7 @@ export const mockChats: Chat[] = [
     ],
   },
   {
-    id: 'c3', participants: [mockUsers[0], mockUsers[1], mockUsers[2]], isGroup: true, name: 'Project Nexus', unreadCount: 5,
+    id: 'c3', participants: [mockUsers[0], mockUsers[1], mockUsers[2]], isGroup: true, name: 'Project HyperChat', unreadCount: 5,
     messages: [
       makeMsg('m11', '1', 'Team standup in 10 minutes! 🚀', 30),
       makeMsg('m12', '2', 'On my way, just finishing the WebRTC stats dashboard', 28),

@@ -153,12 +153,16 @@ export const useChats = () => {
     // Create new DM chat
     const { data: newChat, error: chatError } = await supabase
       .from('chats')
-      .insert({ is_group: false, created_by: user.id })
+      .insert({ 
+        is_group: false, 
+        created_by: user.id,
+        updated_at: new Date().toISOString()
+      })
       .select()
       .single();
 
     if (chatError || !newChat) {
-      console.error('Error creating chat:', chatError);
+      console.error('Detailed Chat Creation Error:', chatError);
       return null;
     }
 
@@ -169,8 +173,8 @@ export const useChats = () => {
     ]);
 
     if (membersError) {
-      console.error('Error adding members:', membersError);
-      // Optional: Cleanup the created chat if members failed
+      console.error('Detailed Member Addition Error:', membersError);
+      // Cleanup
       await supabase.from('chats').delete().eq('id', newChat.id);
       return null;
     }

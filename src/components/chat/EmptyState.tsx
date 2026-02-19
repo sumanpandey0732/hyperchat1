@@ -21,7 +21,7 @@ const EmptyState = ({ onNewChat }: EmptyStateProps) => (
         <MessageSquare size={40} className="text-primary" />
       </motion.div>
 
-      <h2 className="text-2xl font-bold mb-2 font-display neon-text-cyan">Nexus</h2>
+      <h2 className="text-2xl font-bold mb-2 font-display neon-text-cyan">HyperChat</h2>
       <p className="text-sm text-muted-foreground mb-8 leading-relaxed">
         Beautiful, secure, real-time messaging.<br />
         Select a chat or start a new conversation.

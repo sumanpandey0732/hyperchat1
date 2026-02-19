@@ -81,7 +81,7 @@ const InfoPanel = ({ chat, onClose }: InfoPanelProps) => {
           <div className="px-4 pb-4">
             <div className="glass-panel rounded-xl p-3">
               <p className="text-xs text-muted-foreground mb-0.5">About</p>
-              <p className="text-sm">{"Hey there! I am using Nexus"}</p>
+              <p className="text-sm">{"Hey there! I am using HyperChat"}</p>
             </div>
           </div>
         )}

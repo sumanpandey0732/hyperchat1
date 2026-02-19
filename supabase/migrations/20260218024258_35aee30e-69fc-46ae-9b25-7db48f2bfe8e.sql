@@ -5,7 +5,7 @@ CREATE TABLE public.profiles (
   user_id UUID NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
   display_name TEXT NOT NULL DEFAULT '',
   avatar_url TEXT,
-  about TEXT DEFAULT 'Hey there! I am using Nexus',
+  about TEXT DEFAULT 'Hey there! I am using HyperChat',
   phone TEXT,
   is_online BOOLEAN DEFAULT false,
   last_seen TIMESTAMPTZ DEFAULT now(),

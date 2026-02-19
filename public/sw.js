@@ -1,5 +1,5 @@
-// Nexus Service Worker - Push Notifications
-const CACHE_NAME = 'nexus-v1';
+// HyperChat Service Worker - Push Notifications
+const CACHE_NAME = 'hyperchat-v1';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -16,14 +16,14 @@ self.addEventListener('push', (event) => {
   try {
     data = event.data.json();
   } catch {
-    data = { title: 'Nexus', body: event.data.text() };
+    data = { title: 'HyperChat', body: event.data.text() };
   }
 
   const options = {
     body: data.body || 'You have a new message',
     icon: '/favicon.ico',
     badge: '/favicon.ico',
-    tag: data.tag || 'nexus-message',
+    tag: data.tag || 'hyperchat-message',
     data: { url: data.url || '/' },
     requireInteraction: false,
     silent: false,
@@ -31,7 +31,7 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Nexus', options)
+    self.registration.showNotification(data.title || 'HyperChat', options)
   );
 });
 

@@ -30,9 +30,9 @@ export function showLocalNotification(title: string, body: string, tag?: string)
     swRegistration.showNotification(title, {
       body,
       icon: '/favicon.ico',
-      tag: tag || 'nexus',
+      tag: tag || 'hyperchat',
     });
   } else {
-    new Notification(title, { body, icon: '/favicon.ico', tag: tag || 'nexus' });
+    new Notification(title, { body, icon: '/favicon.ico', tag: tag || 'hyperchat' });
   }
 }

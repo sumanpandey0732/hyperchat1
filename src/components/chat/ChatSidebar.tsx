@@ -87,7 +87,7 @@ const ChatSidebar = ({
               </div>
               <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full status-online border border-background" />
             </button>
-            <h1 className="text-lg font-bold neon-text-cyan font-display">Nexus</h1>
+            <h1 className="text-lg font-bold neon-text-cyan font-display">HyperChat</h1>
           </div>
           <div className="flex gap-1">
             <motion.button

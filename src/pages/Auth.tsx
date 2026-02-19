@@ -22,14 +22,26 @@ const Auth = () => {
     try {
       if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) toast.error(error.message);
+        if (error) {
+          console.error('Login error:', error);
+          toast.error(error.message);
+        }
       } else {
         const { error } = await supabase.auth.signUp({
           email, password,
-          options: { data: { full_name: name.trim() } },
+          options: { 
+            data: { 
+              full_name: name.trim(),
+              display_name: name.trim() 
+            } 
+          },
         });
-        if (error) toast.error(error.message);
-        else toast.success('Account created! You are now signed in.');
+        if (error) {
+          console.error('Signup error:', error);
+          toast.error(error.message);
+        } else {
+          toast.success('Account created! Please check your email for verification.');
+        }
       }
     } finally {
       setLoading(false);
@@ -61,7 +73,7 @@ const Auth = () => {
           <div className="w-16 h-16 rounded-2xl bg-primary/15 border border-primary/30 flex items-center justify-center mx-auto mb-4 neon-glow-cyan">
             <MessageSquare size={32} className="text-primary" />
           </div>
-          <h1 className="text-3xl font-bold neon-text-cyan font-display tracking-tight">Nexus</h1>
+          <h1 className="text-3xl font-bold neon-text-cyan font-display tracking-tight">HyperChat</h1>
           <p className="text-muted-foreground text-sm mt-1">Connect with the world, beautifully</p>
         </motion.div>
 
@@ -192,7 +204,7 @@ const Auth = () => {
 
         <div className="flex items-center justify-center gap-2 mt-6 text-xs text-muted-foreground/60">
           <Zap size={12} className="text-primary" />
-          <span>End-to-end encrypted • Real-time • Powered by Nexus</span>
+          <span>End-to-end encrypted • Real-time • Powered by HyperChat</span>
         </div>
       </div>
     </div>
