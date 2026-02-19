@@ -151,19 +151,29 @@ export const useChats = () => {
     }
 
     // Create new DM chat
-    const { data: newChat, error } = await supabase
+    const { data: newChat, error: chatError } = await supabase
       .from('chats')
       .insert({ is_group: false, created_by: user.id })
       .select()
       .single();
 
-    if (error || !newChat) return null;
+    if (chatError || !newChat) {
+      console.error('Error creating chat:', chatError);
+      return null;
+    }
 
     // Add both members
-    await supabase.from('chat_members').insert([
+    const { error: membersError } = await supabase.from('chat_members').insert([
       { chat_id: newChat.id, user_id: user.id, role: 'admin' },
       { chat_id: newChat.id, user_id: contactUserId, role: 'member' },
     ]);
+
+    if (membersError) {
+      console.error('Error adding members:', membersError);
+      // Optional: Cleanup the created chat if members failed
+      await supabase.from('chats').delete().eq('id', newChat.id);
+      return null;
+    }
 
     await fetchChats();
     return newChat.id;
@@ -172,19 +182,30 @@ export const useChats = () => {
   const createGroupChat = async (name: string, memberIds: string[]): Promise<string | null> => {
     if (!user) return null;
 
-    const { data: newChat, error } = await supabase
+    const { data: newChat, error: chatError } = await supabase
       .from('chats')
       .insert({ is_group: true, group_name: name, created_by: user.id })
       .select()
       .single();
 
-    if (error || !newChat) return null;
+    if (chatError || !newChat) {
+      console.error('Error creating group chat:', chatError);
+      return null;
+    }
 
     const members = [
       { chat_id: newChat.id, user_id: user.id, role: 'admin' },
       ...memberIds.map(id => ({ chat_id: newChat.id, user_id: id, role: 'member' })),
     ];
-    await supabase.from('chat_members').insert(members);
+    
+    const { error: membersError } = await supabase.from('chat_members').insert(members);
+    
+    if (membersError) {
+      console.error('Error adding group members:', membersError);
+      await supabase.from('chats').delete().eq('id', newChat.id);
+      return null;
+    }
+
     await fetchChats();
     return newChat.id;
   };

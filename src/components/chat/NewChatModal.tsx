@@ -51,8 +51,12 @@ const NewChatModal = ({ onClose, onChatCreated, createDirectChat, createGroupCha
       if (mode === 'dm') {
         if (selected.length !== 1) { toast.error('Select one contact'); return; }
         const chatId = await createDirectChat(selected[0].user_id);
-        if (chatId) { onChatCreated(chatId); onClose(); }
-        else toast.error('Failed to create chat');
+        if (chatId) { 
+          onChatCreated(chatId); 
+          onClose(); 
+        } else {
+          toast.error('Failed to create chat. Check console for details.');
+        }
       } else {
         if (!groupName.trim()) { toast.error('Enter group name'); return; }
         if (selected.length < 1) { toast.error('Add at least one member'); return; }

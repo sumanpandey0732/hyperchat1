@@ -120,7 +120,7 @@ export const useMessages = (chatId: string | null) => {
     file_name: string;
     file_type: string;
   }) => {
-    if (!chatId || !user) return;
+    if (!chatId || !user) return false;
     const { error } = await supabase.from('messages').insert({
       chat_id: chatId,
       sender_id: user.id,
@@ -128,7 +128,12 @@ export const useMessages = (chatId: string | null) => {
       type,
       ...fileData,
     });
-    return !error;
+    
+    if (error) {
+      console.error('Error sending message:', error);
+      return false;
+    }
+    return true;
   };
 
   const deleteMessage = async (messageId: string) => {

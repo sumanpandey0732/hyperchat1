@@ -52,7 +52,10 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
     setReplyTo(null);
     setShowEmoji(false);
     const ok = await sendMessage(content);
-    if (!ok) toast.error('Failed to send message');
+    if (!ok) {
+      toast.error('Failed to send message. Check connection.');
+      setInput(content); // Restore input if failed
+    }
   }, [input, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
