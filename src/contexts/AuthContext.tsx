@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { registerServiceWorker, requestNotificationPermission } from '@/lib/notifications';
 
 export type Profile = {
   id: string;
@@ -45,6 +46,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
+    // Register service worker on mount
+    registerServiceWorker();
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -60,9 +64,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }, 0);
 
         // Request notification permission
-        if ('Notification' in window && Notification.permission === 'default') {
-          Notification.requestPermission();
-        }
+        await requestNotificationPermission();
       } else {
         setProfile(null);
       }
@@ -70,9 +72,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        setLoading(false);
-      }
+      if (!session) setLoading(false);
     });
 
     return () => subscription.unsubscribe();

@@ -14,6 +14,56 @@ export type Database = {
   }
   public: {
     Tables: {
+      calls: {
+        Row: {
+          call_type: string
+          callee_id: string | null
+          caller_id: string
+          chat_id: string
+          ended_at: string | null
+          ice_candidates: Json | null
+          id: string
+          sdp_answer: string | null
+          sdp_offer: string | null
+          started_at: string
+          status: string
+        }
+        Insert: {
+          call_type?: string
+          callee_id?: string | null
+          caller_id: string
+          chat_id: string
+          ended_at?: string | null
+          ice_candidates?: Json | null
+          id?: string
+          sdp_answer?: string | null
+          sdp_offer?: string | null
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          call_type?: string
+          callee_id?: string | null
+          caller_id?: string
+          chat_id?: string
+          ended_at?: string | null
+          ice_candidates?: Json | null
+          id?: string
+          sdp_answer?: string | null
+          sdp_offer?: string | null
+          started_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calls_chat_id_fkey"
+            columns: ["chat_id"]
+            isOneToOne: false
+            referencedRelation: "chats"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_members: {
         Row: {
           chat_id: string

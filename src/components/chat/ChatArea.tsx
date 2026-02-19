@@ -15,6 +15,7 @@ interface ChatAreaProps {
   currentUser: Profile;
   onBack?: () => void;
   onOpenInfo?: () => void;
+  onStartCall?: (chat: ChatWithMeta, callType: 'audio' | 'video') => void;
 }
 
 const avatarHue = (name: string) => (name.charCodeAt(0) * 13) % 360;
@@ -29,7 +30,7 @@ const TypingDots = () => (
   </div>
 );
 
-const ChatArea = ({ chat, currentUser, onBack, onOpenInfo }: ChatAreaProps) => {
+const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAreaProps) => {
   const { messages, loading, sendMessage, deleteMessage, uploadFile } = useMessages(chat.id);
   const [input, setInput] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
@@ -246,17 +247,25 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo }: ChatAreaProps) => {
           <div className="min-w-0">
             <h2 className="font-semibold text-sm truncate">{chatName}</h2>
             <p className="text-xs text-muted-foreground flex items-center gap-1">
-              {isOnline && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />}
+              {isOnline && <span className="w-1.5 h-1.5 rounded-full status-online inline-block" />}
               {statusText}
             </p>
           </div>
         </button>
 
         <div className="flex items-center gap-0.5 flex-shrink-0">
-          <button className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-primary transition-colors">
+          <button
+            onClick={() => onStartCall?.(chat, 'audio')}
+            className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-primary transition-colors"
+            title="Voice call"
+          >
             <Phone size={18} />
           </button>
-          <button className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-primary transition-colors">
+          <button
+            onClick={() => onStartCall?.(chat, 'video')}
+            className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-primary transition-colors"
+            title="Video call"
+          >
             <Video size={18} />
           </button>
           <button className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors">

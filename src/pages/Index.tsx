@@ -1,8 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChats } from '@/hooks/useChats';
+import { supabase } from '@/integrations/supabase/client';
+import { showLocalNotification } from '@/lib/notifications';
 import AnimatedBackground from '@/components/chat/AnimatedBackground';
 import ChatSidebar from '@/components/chat/ChatSidebar';
 import ChatArea from '@/components/chat/ChatArea';
@@ -11,9 +13,27 @@ import BottomNav from '@/components/chat/BottomNav';
 import NewChatModal from '@/components/chat/NewChatModal';
 import ProfileSheet from '@/components/chat/ProfileSheet';
 import InfoPanel from '@/components/chat/InfoPanel';
+import CallScreen from '@/components/call/CallScreen';
+import IncomingCallBanner from '@/components/call/IncomingCallBanner';
 import type { ChatWithMeta } from '@/hooks/useChats';
 
 type Tab = 'chats' | 'groups' | 'calls' | 'profile';
+
+type IncomingCall = {
+  callId: string;
+  callType: 'audio' | 'video';
+  callerId: string;
+  callerName: string;
+  callerAvatar: string | null;
+  chat: ChatWithMeta;
+};
+
+type ActiveCall = {
+  chat: ChatWithMeta;
+  callType: 'audio' | 'video';
+  callId?: string;
+  isIncoming: boolean;
+};
 
 const Index = () => {
   const { user, profile, loading } = useAuth();
@@ -23,6 +43,8 @@ const Index = () => {
   const [showNewChat, setShowNewChat] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('chats');
+  const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
 
   const activeChat = chats.find(c => c.id === activeChatId) || null;
 
@@ -43,6 +65,74 @@ const Index = () => {
     setActiveChatId(chatId);
     setShowNewChat(false);
   };
+
+  const startCall = (chat: ChatWithMeta, callType: 'audio' | 'video') => {
+    setActiveCall({ chat, callType, isIncoming: false });
+  };
+
+  // Listen for incoming calls
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel('incoming-calls')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'calls',
+        // Filter to calls where current user is the callee
+        filter: `callee_id=eq.${user.id}`,
+      }, async (payload) => {
+        const callRow = payload.new as {
+          id: string;
+          call_type: 'audio' | 'video';
+          caller_id: string;
+          chat_id: string;
+          status: string;
+        };
+
+        if (callRow.status !== 'ringing') return;
+
+        // Get caller profile
+        const { data: callerProfile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('user_id', callRow.caller_id)
+          .single();
+
+        // Find related chat
+        const chat = chats.find(c => c.id === callRow.chat_id);
+        if (!chat) return;
+
+        const incoming: IncomingCall = {
+          callId: callRow.id,
+          callType: callRow.call_type,
+          callerId: callRow.caller_id,
+          callerName: callerProfile?.display_name || 'Unknown',
+          callerAvatar: callerProfile?.avatar_url || null,
+          chat,
+        };
+
+        setIncomingCall(incoming);
+
+        // Show push notification if tab hidden
+        if (document.hidden) {
+          showLocalNotification(
+            `Incoming ${callRow.call_type} call`,
+            `${incoming.callerName} is calling you`,
+            callRow.id
+          );
+        }
+
+        // Auto-dismiss after 30s (missed call)
+        setTimeout(() => {
+          setIncomingCall(prev => prev?.callId === callRow.id ? null : prev);
+        }, 30000);
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user, chats]);
 
   if (loading) {
     return (
@@ -93,6 +183,7 @@ const Index = () => {
               currentUser={profile}
               onBack={() => setActiveChatId(null)}
               onOpenInfo={() => setShowInfo(true)}
+              onStartCall={startCall}
             />
           ) : (
             <EmptyState onNewChat={() => setShowNewChat(true)} />
@@ -135,6 +226,41 @@ const Index = () => {
       {showProfile && (
         <ProfileSheet onClose={() => setShowProfile(false)} />
       )}
+
+      {/* Incoming call banner */}
+      <AnimatePresence>
+        {incomingCall && !activeCall && (
+          <IncomingCallBanner
+            callerName={incomingCall.callerName}
+            callerAvatar={incomingCall.callerAvatar}
+            callType={incomingCall.callType}
+            onAccept={() => {
+              setActiveCall({
+                chat: incomingCall.chat,
+                callType: incomingCall.callType,
+                callId: incomingCall.callId,
+                isIncoming: true,
+              });
+              setIncomingCall(null);
+            }}
+            onDecline={() => setIncomingCall(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Active call screen */}
+      <AnimatePresence>
+        {activeCall && (
+          <CallScreen
+            chat={activeCall.chat}
+            callType={activeCall.callType}
+            callId={activeCall.callId}
+            isIncoming={activeCall.isIncoming}
+            currentUser={profile}
+            onEnd={() => setActiveCall(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
