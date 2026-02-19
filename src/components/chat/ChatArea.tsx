@@ -81,8 +81,8 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  const chatName = chat.is_group ? chat.group_name || 'Group' : chat.members[0]?.display_name || 'Unknown';
-  const chatMember = chat.is_group ? null : chat.members[0];
+  const chatName = chat.is_group ? chat.group_name || 'Group' : chat.members.find(m => m.user_id !== currentUser.user_id)?.display_name || 'Unknown';
+  const chatMember = chat.is_group ? null : chat.members.find(m => m.user_id !== currentUser.user_id);
   const isOnline = !chat.is_group && chatMember?.is_online;
   const memberCount = chat.members.length + 1;
 

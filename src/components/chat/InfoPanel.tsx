@@ -11,8 +11,8 @@ const avatarHue = (name: string) => (name.charCodeAt(0) * 13) % 360;
 
 const InfoPanel = ({ chat, onClose }: InfoPanelProps) => {
   const isGroup = chat.is_group;
-  const name = isGroup ? chat.group_name || 'Group' : chat.members[0]?.display_name || 'Unknown';
-  const member = !isGroup ? chat.members[0] : null;
+  const name = isGroup ? chat.group_name || 'Group' : chat.members.find(m => m.user_id !== chat.created_by)?.display_name || 'Unknown';
+  const member = !isGroup ? chat.members.find(m => m.user_id !== chat.created_by) : null;
   const status = isGroup
     ? `${chat.members.length + 1} participants`
     : member?.is_online ? 'Online now' : 'Offline';

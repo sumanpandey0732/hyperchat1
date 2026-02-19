@@ -34,19 +34,22 @@ const ChatSidebar = ({
     return name?.toLowerCase().includes(search.toLowerCase());
   });
 
-  const getChatName = (chat: ChatWithMeta) =>
-    chat.is_group ? chat.group_name || 'Group' : chat.members[0]?.display_name || 'Unknown';
+  const getChatName = (chat: ChatWithMeta) => {
+    if (chat.is_group) return chat.group_name || 'Group';
+    const otherMember = chat.members.find(m => m.user_id !== currentUserId);
+    return otherMember?.display_name || 'Unknown';
+  };
 
   const getChatAvatar = (chat: ChatWithMeta, index: number) => {
     if (chat.is_group) {
       const name = chat.group_name || 'G';
       return { initials: name[0].toUpperCase(), hue: avatarHue(name), avatarUrl: chat.group_avatar_url };
     }
-    const member = chat.members[0];
+    const otherMember = chat.members.find(m => m.user_id !== currentUserId);
     return {
-      initials: member?.display_name?.[0]?.toUpperCase() || '?',
-      hue: avatarHue(member?.display_name || ''),
-      avatarUrl: member?.avatar_url,
+      initials: otherMember?.display_name?.[0]?.toUpperCase() || '?',
+      hue: avatarHue(otherMember?.display_name || ''),
+      avatarUrl: otherMember?.avatar_url,
     };
   };
 
