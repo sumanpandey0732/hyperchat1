@@ -2,8 +2,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Phone, Video, MoreVertical, Send, Paperclip, Smile,
-  Mic, Lock, ArrowLeft, Image as ImageIcon, X, CheckCheck,
-  Check, Trash2, Reply, Download
+  Mic, Lock, ArrowLeft, X, CheckCheck, Check,
+  Trash2, Reply, Download, Image as ImageIcon
 } from 'lucide-react';
 import { useMessages, type Message } from '@/hooks/useMessages';
 import type { ChatWithMeta } from '@/hooks/useChats';
@@ -19,11 +19,13 @@ interface ChatAreaProps {
 }
 
 const avatarHue = (name: string) => (name.charCodeAt(0) * 13) % 360;
-
 const emojis = ['😀','😂','❤️','🔥','👍','🎉','✨','🚀','💡','🎧','🎮','💎','🌙','⚡','🎵','🙏'];
 
-const TypingDots = () => (
-  <div className="flex items-end gap-1 px-4 py-3 rounded-2xl rounded-bl-md message-bubble-received max-w-fit">
+const TypingDots = ({ names }: { names: string[] }) => (
+  <div className="flex items-end gap-1 px-4 py-2.5 rounded-2xl rounded-bl-md message-bubble-received max-w-fit">
+    <span className="text-xs text-muted-foreground mr-1">
+      {names.length === 1 ? names[0] : `${names.length} people`} typing
+    </span>
     {[0,1,2].map(i => (
       <span key={i} className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground block" style={{ animationDelay: `${i * 0.2}s` }} />
     ))}
@@ -31,7 +33,7 @@ const TypingDots = () => (
 );
 
 const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAreaProps) => {
-  const { messages, loading, sendMessage, deleteMessage, uploadFile } = useMessages(chat.id);
+  const { messages, loading, typingUsers, sendMessage, sendTypingIndicator, deleteMessage, uploadFile } = useMessages(chat.id);
   const [input, setInput] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
   const [selectedMsg, setSelectedMsg] = useState<Message | null>(null);
@@ -40,6 +42,7 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout>();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -51,10 +54,14 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
     setInput('');
     setReplyTo(null);
     setShowEmoji(false);
+    // Reset textarea height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
     const ok = await sendMessage(content);
     if (!ok) {
-      toast.error('Failed to send message. Check connection.');
-      setInput(content); // Restore input if failed
+      toast.error('Failed to send. Check connection.');
+      setInput(content);
     }
   }, [input, sendMessage]);
 
@@ -65,36 +72,54 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
     }
   };
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    e.target.style.height = 'auto';
+    e.target.style.height = Math.min(e.target.scrollHeight, 128) + 'px';
+
+    // Send typing indicator (debounced)
+    clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      sendTypingIndicator(currentUser.display_name);
+    }, 300);
+  };
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { toast.error('File must be under 10MB'); return; }
+    if (file.size > 20 * 1024 * 1024) { toast.error('File must be under 20MB'); return; }
     setUploading(true);
     const result = await uploadFile(file);
     if (result) {
-      const type = file.type.startsWith('image/') ? 'image' : 'file';
+      const type = file.type.startsWith('image/') ? 'image' 
+        : file.type.startsWith('video/') ? 'video' 
+        : file.type.startsWith('audio/') ? 'audio'
+        : 'file';
       await sendMessage(file.name, type, { file_url: result.url, file_name: result.name, file_type: result.type });
     } else {
-      toast.error('Upload failed');
+      toast.error('Upload failed. Try again.');
     }
     setUploading(false);
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  const chatName = chat.is_group ? chat.group_name || 'Group' : chat.members.find(m => m.user_id !== currentUser.user_id)?.display_name || 'Unknown';
-  const chatMember = chat.is_group ? null : chat.members.find(m => m.user_id !== currentUser.user_id);
+  const chatName = chat.is_group
+    ? chat.group_name || 'Group'
+    : chat.members[0]?.display_name || 'Unknown';
+  const chatMember = chat.is_group ? null : chat.members[0] || null;
   const isOnline = !chat.is_group && chatMember?.is_online;
   const memberCount = chat.members.length + 1;
 
   const statusText = chat.is_group
     ? `${memberCount} members`
-    : isOnline ? 'Online' : chatMember?.last_seen
-      ? `Last seen ${new Date(chatMember.last_seen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+    : isOnline ? 'Online'
+    : chatMember?.last_seen
+      ? `last seen ${new Date(chatMember.last_seen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
       : 'Offline';
 
   const formatMsgTime = (d: string) => new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  const renderMessage = (msg: Message, isSent: boolean, showAvatar: boolean, isLast: boolean) => {
+  const renderMessage = (msg: Message, isSent: boolean, showAvatar: boolean) => {
     const hue = avatarHue(msg.sender?.display_name || '');
 
     return (
@@ -104,11 +129,11 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ type: 'spring', stiffness: 380, damping: 28 }}
         className={`flex mb-0.5 ${isSent ? 'justify-end' : 'justify-start'}`}
-        onClick={() => setSelectedMsg(selectedMsg?.id === msg.id ? null : msg)}
+        onClick={(e) => { e.stopPropagation(); setSelectedMsg(selectedMsg?.id === msg.id ? null : msg); }}
       >
-        {/* Received avatar */}
+        {/* Group avatar */}
         {!isSent && chat.is_group && (
-          <div className="w-8 flex-shrink-0 mr-2 mt-auto">
+          <div className="w-8 flex-shrink-0 mr-1.5 mt-auto">
             {showAvatar && (
               <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold overflow-hidden"
                 style={{ background: msg.sender?.avatar_url ? undefined : `hsl(${hue}, 70%, 45%)` }}>
@@ -120,7 +145,7 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
           </div>
         )}
 
-        <div className={`max-w-[72%] lg:max-w-[60%] flex flex-col ${isSent ? 'items-end' : 'items-start'}`}>
+        <div className={`max-w-[75%] lg:max-w-[60%] flex flex-col ${isSent ? 'items-end' : 'items-start'}`}>
           {!isSent && chat.is_group && showAvatar && (
             <span className="text-[10px] font-semibold px-1 mb-0.5"
               style={{ color: `hsl(${hue}, 70%, 60%)` }}>
@@ -135,7 +160,7 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
             {/* Reply preview */}
             {msg.reply_to && (
               <div className="mb-1.5 px-2 py-1 rounded-lg border-l-2 border-primary bg-muted/30 text-xs text-muted-foreground">
-                Replied to message
+                ↩ Replied to message
               </div>
             )}
 
@@ -145,10 +170,21 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
                 <img
                   src={msg.file_url}
                   alt={msg.file_name || 'Image'}
-                  className="rounded-xl max-w-full max-h-56 object-cover cursor-pointer"
+                  className="rounded-xl max-w-full max-h-64 object-cover cursor-pointer"
                   loading="lazy"
+                  onClick={() => window.open(msg.file_url!, '_blank')}
                 />
               </div>
+            )}
+
+            {/* Video */}
+            {msg.type === 'video' && msg.file_url && (
+              <video src={msg.file_url} controls className="rounded-xl max-w-full max-h-48 mb-1.5" />
+            )}
+
+            {/* Audio */}
+            {msg.type === 'audio' && msg.file_url && (
+              <audio src={msg.file_url} controls className="mb-1.5 w-48" />
             )}
 
             {/* File */}
@@ -156,17 +192,21 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
               <a href={msg.file_url} target="_blank" rel="noopener noreferrer"
                 className="flex items-center gap-2 mb-1.5 px-2 py-1.5 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors">
                 <Paperclip size={14} className="text-primary flex-shrink-0" />
-                <span className="text-xs truncate">{msg.file_name}</span>
+                <span className="text-xs truncate max-w-[140px]">{msg.file_name}</span>
                 <Download size={12} className="flex-shrink-0 text-muted-foreground" />
               </a>
             )}
 
             {/* Text */}
-            {msg.content && (
+            {msg.content && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'audio' && (
               <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
             )}
+            {/* Image caption */}
+            {msg.content && (msg.type === 'image' || msg.type === 'video') && msg.content !== msg.file_name && (
+              <p className="text-xs mt-1 leading-relaxed">{msg.content}</p>
+            )}
 
-            {/* Time + read */}
+            {/* Time + read receipt */}
             <div className={`flex items-center gap-1 mt-0.5 ${isSent ? 'justify-end' : 'justify-start'}`}>
               <span className="text-[10px] text-muted-foreground/60">
                 {formatMsgTime(msg.created_at)}
@@ -177,7 +217,7 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
             </div>
           </div>
 
-          {/* Actions on tap */}
+          {/* Action buttons on tap */}
           <AnimatePresence>
             {selectedMsg?.id === msg.id && (
               <motion.div
@@ -186,13 +226,13 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
                 exit={{ opacity: 0, scale: 0.8, y: -5 }}
                 className={`flex gap-1 mt-1 ${isSent ? 'flex-row-reverse' : 'flex-row'}`}
               >
-                <button onClick={() => { setReplyTo(msg); setSelectedMsg(null); }}
+                <button onClick={(e) => { e.stopPropagation(); setReplyTo(msg); setSelectedMsg(null); }}
                   className="p-1.5 rounded-lg glass-panel text-muted-foreground hover:text-foreground text-xs flex items-center gap-1">
                   <Reply size={13} /> Reply
                 </button>
                 {isSent && (
-                  <button onClick={() => deleteMessage(msg.id)}
-                    className="p-1.5 rounded-lg glass-panel text-destructive hover:text-destructive text-xs flex items-center gap-1">
+                  <button onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id); setSelectedMsg(null); }}
+                    className="p-1.5 rounded-lg glass-panel text-destructive text-xs flex items-center gap-1">
                     <Trash2 size={13} /> Delete
                   </button>
                 )}
@@ -204,7 +244,7 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
     );
   };
 
-  // Group messages by sender
+  // Group consecutive messages by sender
   type MsgGroup = { senderId: string; msgs: Message[] };
   const groups: MsgGroup[] = [];
   for (const msg of messages) {
@@ -214,9 +254,9 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" onClick={() => setSelectedMsg(null)}>
       {/* Header */}
-      <div className="glass-panel-strong px-3 py-3 flex items-center gap-3 border-b border-border/25 flex-shrink-0">
+      <div className="glass-panel-strong px-3 py-2.5 flex items-center gap-3 border-b border-border/25 flex-shrink-0">
         {onBack && (
           <button onClick={onBack} className="p-1.5 rounded-xl hover:bg-muted/50 text-muted-foreground lg:hidden">
             <ArrowLeft size={20} />
@@ -227,7 +267,7 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
           {chat.is_group ? (
             <div className="relative w-10 h-10 flex-shrink-0">
               {chat.members.slice(0, 2).map((m, i) => (
-                <div key={m.id}
+                <div key={m.user_id}
                   className={`absolute w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold border-2 border-background overflow-hidden ${i === 0 ? 'top-0 left-0 z-10' : 'bottom-0 right-0'}`}
                   style={{ background: m.avatar_url ? undefined : `hsl(${avatarHue(m.display_name)}, 70%, 45%)` }}>
                   {m.avatar_url ? <img src={m.avatar_url} alt="" className="w-full h-full object-cover" /> : m.display_name[0]?.toUpperCase()}
@@ -240,35 +280,32 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
                 style={{ background: chatMember?.avatar_url ? undefined : `hsl(${avatarHue(chatMember?.display_name || '')}, 70%, 45%)` }}>
                 {chatMember?.avatar_url
                   ? <img src={chatMember.avatar_url} alt="" className="w-full h-full object-cover" />
-                  : chatMember?.display_name?.[0]?.toUpperCase()}
+                  : chatMember?.display_name?.[0]?.toUpperCase() || '?'}
               </div>
-              {isOnline && (
-                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full status-online border-2 border-background" />
-              )}
+              {isOnline && <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full status-online border-2 border-background" />}
             </div>
           )}
           <div className="min-w-0">
             <h2 className="font-semibold text-sm truncate">{chatName}</h2>
             <p className="text-xs text-muted-foreground flex items-center gap-1">
-              {isOnline && <span className="w-1.5 h-1.5 rounded-full status-online inline-block" />}
-              {statusText}
+              {typingUsers.length > 0
+                ? <span className="text-primary animate-pulse">typing...</span>
+                : <>
+                    {isOnline && <span className="w-1.5 h-1.5 rounded-full status-online inline-block" />}
+                    {statusText}
+                  </>
+              }
             </p>
           </div>
         </button>
 
         <div className="flex items-center gap-0.5 flex-shrink-0">
-          <button
-            onClick={() => onStartCall?.(chat, 'audio')}
-            className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-primary transition-colors"
-            title="Voice call"
-          >
+          <button onClick={() => onStartCall?.(chat, 'audio')}
+            className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-primary transition-colors">
             <Phone size={18} />
           </button>
-          <button
-            onClick={() => onStartCall?.(chat, 'video')}
-            className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-primary transition-colors"
-            title="Video call"
-          >
+          <button onClick={() => onStartCall?.(chat, 'video')}
+            className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-primary transition-colors">
             <Video size={18} />
           </button>
           <button className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors">
@@ -278,31 +315,56 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
       </div>
 
       {/* E2EE Banner */}
-      <div className="flex items-center justify-center gap-1.5 py-1.5 text-[11px] text-muted-foreground/50 flex-shrink-0">
-        <Lock size={10} />
+      <div className="flex items-center justify-center gap-1.5 py-1 text-[10px] text-muted-foreground/40 flex-shrink-0">
+        <Lock size={9} />
         <span>Messages are end-to-end encrypted</span>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-3 py-2" onClick={() => setSelectedMsg(null)}>
+      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-0.5">
         {loading && (
-          <div className="flex items-center justify-center py-8">
-            <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+          <div className="space-y-3 py-4">
+            {[1,2,3,4].map(i => (
+              <div key={i} className={`flex ${i % 2 === 0 ? 'justify-end' : 'justify-start'}`}>
+                <div className={`h-10 rounded-2xl shimmer ${i % 2 === 0 ? 'w-40' : 'w-52'}`} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loading && messages.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full py-16 text-center">
+            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-3 neon-glow-cyan">
+              <span className="text-2xl">👋</span>
+            </div>
+            <p className="text-sm font-medium">Say hello!</p>
+            <p className="text-xs text-muted-foreground mt-1">Start your conversation</p>
           </div>
         )}
 
         {groups.map((group, gi) => {
           const isSent = group.senderId === currentUser.user_id;
           return (
-            <div key={gi} className="mb-2">
+            <div key={gi} className="space-y-0.5">
               {group.msgs.map((msg, mi) =>
-                renderMessage(msg, isSent, mi === 0, mi === group.msgs.length - 1)
+                renderMessage(msg, isSent, mi === 0)
               )}
             </div>
           );
         })}
 
-        <div ref={bottomRef} className="h-2" />
+        {/* Typing indicator */}
+        {typingUsers.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex justify-start mt-1"
+          >
+            <TypingDots names={typingUsers} />
+          </motion.div>
+        )}
+
+        <div ref={bottomRef} className="h-1" />
       </div>
 
       {/* Emoji Picker */}
@@ -336,41 +398,35 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
             className="mx-3 mb-1 px-3 py-2 rounded-xl glass-panel border-l-2 border-primary flex items-center gap-2 flex-shrink-0"
           >
             <Reply size={14} className="text-primary flex-shrink-0" />
-            <p className="text-xs text-muted-foreground truncate flex-1">{replyTo.content}</p>
-            <button onClick={() => setReplyTo(null)} className="text-muted-foreground hover:text-foreground">
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] text-primary font-medium">{replyTo.sender?.display_name || 'Message'}</p>
+              <p className="text-xs text-muted-foreground truncate">{replyTo.content || '📎 Attachment'}</p>
+            </div>
+            <button onClick={() => setReplyTo(null)} className="text-muted-foreground hover:text-foreground flex-shrink-0">
               <X size={14} />
             </button>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Input Area */}
+      {/* Input */}
       <div className="p-3 pt-1 flex-shrink-0">
-        <div className="chat-input-area rounded-2xl flex items-end gap-1 px-2 py-2">
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-          >
+        <div className="chat-input-area rounded-2xl flex items-end gap-1 px-2 py-1.5">
+          <button onClick={() => fileRef.current?.click()} disabled={uploading}
+            className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors flex-shrink-0">
             {uploading
               ? <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
               : <Paperclip size={18} />}
           </button>
-          <button
-            onClick={() => setShowEmoji(!showEmoji)}
-            className={`p-2 rounded-xl hover:bg-muted/50 transition-colors flex-shrink-0 ${showEmoji ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-          >
+          <button onClick={() => setShowEmoji(!showEmoji)}
+            className={`p-2 rounded-xl hover:bg-muted/50 transition-colors flex-shrink-0 ${showEmoji ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
             <Smile size={18} />
           </button>
 
           <textarea
             ref={textareaRef}
             value={input}
-            onChange={e => {
-              setInput(e.target.value);
-              e.target.style.height = 'auto';
-              e.target.style.height = Math.min(e.target.scrollHeight, 128) + 'px';
-            }}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
             placeholder="Type a message..."
             rows={1}
@@ -379,7 +435,7 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
           />
 
           <input ref={fileRef} type="file" className="hidden" onChange={handleFileSelect}
-            accept="image/*,application/pdf,.doc,.docx,.txt" />
+            accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.txt,.zip" />
 
           <AnimatePresence mode="wait">
             {input.trim() ? (

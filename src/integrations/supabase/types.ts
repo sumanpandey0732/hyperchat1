@@ -251,6 +251,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_add_chat_member: {
+        Args: { _chat_id: string; _inserter_id: string }
+        Returns: boolean
+      }
       is_chat_member: {
         Args: { _chat_id: string; _user_id: string }
         Returns: boolean

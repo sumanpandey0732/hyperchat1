@@ -23,24 +23,33 @@ const Auth = () => {
       if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) {
-          console.error('Login error:', error);
-          toast.error(error.message);
+          if (error.message.includes('Invalid login credentials')) {
+            toast.error('Wrong email or password. Please try again.');
+          } else if (error.message.includes('Email not confirmed')) {
+            toast.error('Please verify your email first, or try signing up again.');
+          } else {
+            toast.error(error.message);
+          }
         }
       } else {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email, password,
-          options: { 
-            data: { 
+          options: {
+            data: {
               full_name: name.trim(),
-              display_name: name.trim() 
-            } 
+              name: name.trim(),
+              display_name: name.trim(),
+            }
           },
         });
         if (error) {
-          console.error('Signup error:', error);
-          toast.error(error.message);
-        } else {
-          toast.success('Account created! Please check your email for verification.');
+          if (error.message.includes('already registered')) {
+            toast.error('Email already in use. Try signing in instead.');
+          } else {
+            toast.error(error.message);
+          }
+        } else if (data.user) {
+          toast.success('Account created! You are now signed in.');
         }
       }
     } finally {
