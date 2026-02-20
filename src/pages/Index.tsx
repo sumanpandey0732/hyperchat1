@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
+import { MessageSquarePlus } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChats } from '@/hooks/useChats';
 import { supabase } from '@/integrations/supabase/client';
@@ -70,17 +71,16 @@ const Index = () => {
     setActiveCall({ chat, callType, isIncoming: false });
   };
 
-  // Listen for incoming calls
+  // Listen for incoming calls via realtime
   useEffect(() => {
     if (!user) return;
 
     const channel = supabase
-      .channel('incoming-calls')
+      .channel(`incoming-calls-${user.id}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'calls',
-        // Filter to calls where current user is the callee
         filter: `callee_id=eq.${user.id}`,
       }, async (payload) => {
         const callRow = payload.new as {
@@ -90,23 +90,17 @@ const Index = () => {
           chat_id: string;
           status: string;
         };
-
         if (callRow.status !== 'ringing') return;
 
-        // Get caller profile
         const { data: callerProfile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('user_id', callRow.caller_id)
-          .single();
+          .from('profiles').select('*').eq('user_id', callRow.caller_id).single();
 
-        // Find related chat
         const chat = chats.find(c => c.id === callRow.chat_id);
         if (!chat) return;
 
         const incoming: IncomingCall = {
           callId: callRow.id,
-          callType: callRow.call_type,
+          callType: callRow.call_type as 'audio' | 'video',
           callerId: callRow.caller_id,
           callerName: callerProfile?.display_name || 'Unknown',
           callerAvatar: callerProfile?.avatar_url || null,
@@ -115,7 +109,6 @@ const Index = () => {
 
         setIncomingCall(incoming);
 
-        // Show push notification if tab hidden
         if (document.hidden) {
           showLocalNotification(
             `Incoming ${callRow.call_type} call`,
@@ -124,7 +117,7 @@ const Index = () => {
           );
         }
 
-        // Auto-dismiss after 30s (missed call)
+        // Auto-dismiss after 30s
         setTimeout(() => {
           setIncomingCall(prev => prev?.callId === callRow.id ? null : prev);
         }, 30000);
@@ -150,7 +143,7 @@ const Index = () => {
     return <Navigate to="/auth" replace />;
   }
 
-  const totalUnread = chats.length;
+  const totalUnread = chats.filter(c => c.unread_count > 0).length;
 
   return (
     <div className="h-screen w-screen overflow-hidden gradient-mesh relative">
@@ -158,11 +151,9 @@ const Index = () => {
 
       <div className="relative z-10 h-full flex">
         {/* Sidebar */}
-        <div
-          className={`glass-panel-strong border-r border-border/25 w-full lg:w-80 xl:w-96 flex-shrink-0 ${
-            activeChatId ? 'hidden lg:flex' : 'flex'
-          } flex-col pb-16 lg:pb-0`}
-        >
+        <div className={`glass-panel-strong border-r border-border/25 w-full lg:w-80 xl:w-96 flex-shrink-0 ${
+          activeChatId ? 'hidden lg:flex' : 'flex'
+        } flex-col pb-16 lg:pb-0`}>
           <ChatSidebar
             chats={chats}
             activeChatId={activeChatId}
@@ -181,7 +172,7 @@ const Index = () => {
             <ChatArea
               chat={activeChat}
               currentUser={profile}
-              onBack={() => setActiveChatId(null)}
+              onBack={() => { setActiveChatId(null); setShowInfo(false); }}
               onOpenInfo={() => setShowInfo(true)}
               onStartCall={startCall}
             />
@@ -212,6 +203,22 @@ const Index = () => {
         onTabChange={handleTabChange}
         unreadCount={totalUnread}
       />
+
+      {/* FAB — Add People button (mobile bottom right) */}
+      <AnimatePresence>
+        {!activeChatId && (
+          <motion.button
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={() => setShowNewChat(true)}
+            className="fixed bottom-20 right-4 z-40 lg:hidden w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-2xl neon-glow-cyan"
+          >
+            <MessageSquarePlus size={24} />
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       {/* Modals */}
       {showNewChat && (

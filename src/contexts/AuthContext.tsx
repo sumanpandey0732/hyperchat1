@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { registerServiceWorker, requestNotificationPermission } from '@/lib/notifications';
@@ -31,14 +31,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const loadingTimeoutRef = useRef<NodeJS.Timeout>();
 
   const loadProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('user_id', userId)
-      .single();
-    if (data) setProfile(data as Profile);
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+      if (data) setProfile(data as Profile);
+    } catch (err) {
+      console.warn('Profile load error:', err);
+    }
   };
 
   const refreshProfile = async () => {
@@ -46,45 +51,67 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
-    // Register service worker on mount
     registerServiceWorker();
 
+    // Safety timeout: never stuck loading > 8s
+    loadingTimeoutRef.current = setTimeout(() => {
+      setLoading(false);
+    }, 8000);
+
+    // Set up listener BEFORE getSession
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
 
       if (session?.user) {
-        await loadProfile(session.user.id);
-        // Mark online
+        // Load profile non-blocking
+        loadProfile(session.user.id).then(() => {
+          setLoading(false);
+          clearTimeout(loadingTimeoutRef.current);
+        });
+
+        // Mark online (deferred)
         setTimeout(async () => {
-          await supabase
-            .from('profiles')
-            .update({ is_online: true })
-            .eq('user_id', session.user.id);
-        }, 0);
+          try {
+            await supabase
+              .from('profiles')
+              .update({ is_online: true })
+              .eq('user_id', session.user.id);
+          } catch {}
+        }, 500);
 
         // Request notification permission
-        await requestNotificationPermission();
+        requestNotificationPermission().catch(() => {});
       } else {
         setProfile(null);
+        setLoading(false);
+        clearTimeout(loadingTimeoutRef.current);
       }
-      setLoading(false);
     });
 
+    // Check existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) setLoading(false);
+      if (!session) {
+        setLoading(false);
+        clearTimeout(loadingTimeoutRef.current);
+      }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(loadingTimeoutRef.current);
+    };
   }, []);
 
   useEffect(() => {
     const markOffline = async () => {
       if (user) {
-        await supabase
-          .from('profiles')
-          .update({ is_online: false, last_seen: new Date().toISOString() })
-          .eq('user_id', user.id);
+        try {
+          await supabase
+            .from('profiles')
+            .update({ is_online: false, last_seen: new Date().toISOString() })
+            .eq('user_id', user.id);
+        } catch {}
       }
     };
     window.addEventListener('beforeunload', markOffline);
@@ -93,12 +120,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signOut = async () => {
     if (user) {
-      await supabase
-        .from('profiles')
-        .update({ is_online: false, last_seen: new Date().toISOString() })
-        .eq('user_id', user.id);
+      try {
+        await supabase
+          .from('profiles')
+          .update({ is_online: false, last_seen: new Date().toISOString() })
+          .eq('user_id', user.id);
+      } catch {}
     }
     await supabase.auth.signOut();
+    setUser(null);
+    setSession(null);
+    setProfile(null);
   };
 
   const updateProfile = async (data: Partial<Omit<Profile, 'id' | 'user_id'>>) => {

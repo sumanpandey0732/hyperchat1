@@ -23,46 +23,68 @@ export const useMessages = (chatId: string | null) => {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
-  const [typing, setTyping] = useState<string[]>([]);
-  const typingTimerRef = useRef<NodeJS.Timeout>();
+  const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const typingTimers = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const profileCacheRef = useRef<Map<string, Profile>>(new Map());
+
+  const getProfile = useCallback(async (userId: string): Promise<Profile | undefined> => {
+    if (profileCacheRef.current.has(userId)) {
+      return profileCacheRef.current.get(userId);
+    }
+    const { data } = await supabase.from('profiles').select('*').eq('user_id', userId).single();
+    if (data) {
+      profileCacheRef.current.set(userId, data as Profile);
+      return data as Profile;
+    }
+  }, []);
 
   const fetchMessages = useCallback(async () => {
     if (!chatId) return;
     setLoading(true);
-    const { data } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('chat_id', chatId)
-      .order('created_at', { ascending: true })
-      .limit(100);
-
-    if (data) {
-      // Get sender profiles
-      const senderIds = [...new Set(data.map(m => m.sender_id))];
-      const { data: profiles } = await supabase
-        .from('profiles')
+    try {
+      const { data } = await supabase
+        .from('messages')
         .select('*')
-        .in('user_id', senderIds);
+        .eq('chat_id', chatId)
+        .order('created_at', { ascending: true })
+        .limit(100);
 
-      const profileMap = new Map((profiles || []).map(p => [p.user_id, p as Profile]));
-      const msgs = data.map(m => ({
-        ...m,
-        sender: profileMap.get(m.sender_id),
-      })) as Message[];
-      setMessages(msgs);
+      if (data) {
+        const senderIds = [...new Set(data.map(m => m.sender_id))];
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('*')
+          .in('user_id', senderIds);
+
+        const profileMap = new Map((profiles || []).map(p => [p.user_id, p as Profile]));
+        // Cache them
+        profiles?.forEach(p => profileCacheRef.current.set(p.user_id, p as Profile));
+
+        const msgs = data.map(m => ({ ...m, sender: profileMap.get(m.sender_id) })) as Message[];
+        setMessages(msgs);
+      }
+    } catch (err) {
+      console.error('fetchMessages error:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [chatId]);
 
   useEffect(() => {
     setMessages([]);
-    if (!chatId) return;
+    setTypingUsers([]);
+    if (!chatId || !user) return;
+
     fetchMessages();
 
-    // Real-time subscription
+    // Cleanup old channel
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+    }
+
     channelRef.current = supabase
-      .channel(`messages-${chatId}`)
+      .channel(`messages-${chatId}-${user.id}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
@@ -70,23 +92,21 @@ export const useMessages = (chatId: string | null) => {
         filter: `chat_id=eq.${chatId}`,
       }, async (payload) => {
         const newMsg = payload.new as Message;
-        // Get sender profile
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('user_id', newMsg.sender_id)
-          .single();
+        const senderProfile = await getProfile(newMsg.sender_id);
+        const msgWithSender = { ...newMsg, sender: senderProfile };
+        setMessages(prev => {
+          // Avoid duplicates
+          if (prev.some(m => m.id === newMsg.id)) return prev;
+          return [...prev, msgWithSender];
+        });
 
-        const msgWithSender = { ...newMsg, sender: profile as Profile };
-        setMessages(prev => [...prev, msgWithSender]);
-
-        // Push notification if tab not focused
+        // Push notification if tab not focused and not own message
         if (document.hidden && newMsg.sender_id !== user?.id) {
-          const senderName = (profile as Profile)?.display_name || 'Someone';
+          const senderName = senderProfile?.display_name || 'Someone';
           showLocalNotification(
             `New message from ${senderName}`,
             newMsg.content || '📎 Attachment',
-            chatId || undefined
+            chatId
           );
         }
       })
@@ -108,12 +128,47 @@ export const useMessages = (chatId: string | null) => {
       }, (payload) => {
         setMessages(prev => prev.filter(m => m.id !== payload.old.id));
       })
-      .subscribe();
+      // Typing indicator via broadcast
+      .on('broadcast', { event: 'typing' }, (payload) => {
+        const { userId, displayName } = payload.payload as { userId: string; displayName: string };
+        if (userId === user?.id) return;
+
+        setTypingUsers(prev => prev.includes(displayName) ? prev : [...prev, displayName]);
+
+        // Clear after 3s
+        const existing = typingTimers.current.get(userId);
+        if (existing) clearTimeout(existing);
+        const timer = setTimeout(() => {
+          setTypingUsers(prev => prev.filter(n => n !== displayName));
+          typingTimers.current.delete(userId);
+        }, 3000);
+        typingTimers.current.set(userId, timer);
+      })
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.warn('Messages channel error, will retry...');
+        }
+      });
 
     return () => {
-      if (channelRef.current) supabase.removeChannel(channelRef.current);
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+      // Clear typing timers
+      typingTimers.current.forEach(t => clearTimeout(t));
+      typingTimers.current.clear();
     };
-  }, [chatId, fetchMessages, user]);
+  }, [chatId, user, fetchMessages, getProfile]);
+
+  const sendTypingIndicator = useCallback(async (displayName: string) => {
+    if (!channelRef.current || !user) return;
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { userId: user.id, displayName },
+    });
+  }, [user]);
 
   const sendMessage = async (content: string, type = 'text', fileData?: {
     file_url: string;
@@ -126,9 +181,10 @@ export const useMessages = (chatId: string | null) => {
       sender_id: user.id,
       content,
       type,
+      status: 'sent',
       ...fileData,
     });
-    
+
     if (error) {
       console.error('Error sending message:', error);
       return false;
@@ -137,7 +193,7 @@ export const useMessages = (chatId: string | null) => {
   };
 
   const deleteMessage = async (messageId: string) => {
-    await supabase.from('messages').delete().eq('id', messageId);
+    await supabase.from('messages').delete().eq('id', messageId).eq('sender_id', user?.id || '');
   };
 
   const uploadFile = async (file: File): Promise<{ url: string; name: string; type: string } | null> => {
@@ -145,10 +201,13 @@ export const useMessages = (chatId: string | null) => {
     const ext = file.name.split('.').pop();
     const path = `${user.id}/${Date.now()}.${ext}`;
     const { error } = await supabase.storage.from('chat-files').upload(path, file);
-    if (error) return null;
+    if (error) {
+      console.error('Upload error:', error);
+      return null;
+    }
     const { data } = supabase.storage.from('chat-files').getPublicUrl(path);
     return { url: data.publicUrl, name: file.name, type: file.type };
   };
 
-  return { messages, loading, typing, sendMessage, deleteMessage, uploadFile };
+  return { messages, loading, typingUsers, sendMessage, sendTypingIndicator, deleteMessage, uploadFile };
 };
