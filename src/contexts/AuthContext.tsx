@@ -33,14 +33,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const loadingTimeoutRef = useRef<NodeJS.Timeout>();
 
-  const loadProfile = async (userId: string) => {
+  const loadProfile = async (userId: string, retries = 3): Promise<void> => {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('user_id', userId)
         .single();
-      if (data) setProfile(data as Profile);
+      if (data) {
+        setProfile(data as Profile);
+        return;
+      }
+      // Profile not found — trigger may not have fired yet; retry or create manually
+      if (error && retries > 0) {
+        await new Promise(r => setTimeout(r, 800));
+        return loadProfile(userId, retries - 1);
+      }
+      // After retries, create profile manually as fallback
+      if (!data) {
+        const { data: userData } = await supabase.auth.getUser();
+        const meta = userData?.user?.user_metadata || {};
+        const displayName = meta.full_name || meta.name || meta.display_name || userData?.user?.email?.split('@')[0] || 'User';
+        const { data: created } = await supabase
+          .from('profiles')
+          .insert({ user_id: userId, display_name: displayName, avatar_url: meta.avatar_url || meta.picture || null })
+          .select()
+          .single();
+        if (created) setProfile(created as Profile);
+      }
     } catch (err) {
       console.warn('Profile load error:', err);
     }
