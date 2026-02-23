@@ -159,6 +159,7 @@ export type Database = {
           file_type: string | null
           file_url: string | null
           id: string
+          read_at: string | null
           reply_to: string | null
           sender_id: string
           status: string | null
@@ -172,6 +173,7 @@ export type Database = {
           file_type?: string | null
           file_url?: string | null
           id?: string
+          read_at?: string | null
           reply_to?: string | null
           sender_id: string
           status?: string | null
@@ -185,6 +187,7 @@ export type Database = {
           file_type?: string | null
           file_url?: string | null
           id?: string
+          read_at?: string | null
           reply_to?: string | null
           sender_id?: string
           status?: string | null

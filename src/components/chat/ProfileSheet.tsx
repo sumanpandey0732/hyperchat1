@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Camera, LogOut, Edit2, Check, Lock, Bell, Moon, ChevronRight } from 'lucide-react';
+import { X, Camera, LogOut, Edit2, Check, Bell, Lock, Moon, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -35,40 +35,28 @@ const ProfileSheet = ({ onClose }: ProfileSheetProps) => {
       const { data } = supabase.storage.from('chat-files').getPublicUrl(path);
       await updateProfile({ avatar_url: data.publicUrl });
       toast.success('Avatar updated!');
-    } finally {
-      setUploading(false);
-    }
+    } finally { setUploading(false); }
   };
 
-  const handleSignOut = async () => {
-    await signOut();
-    onClose();
-  };
+  const handleSignOut = async () => { await signOut(); onClose(); };
 
   const initials = profile?.display_name?.[0]?.toUpperCase() || '?';
   const hue = (profile?.display_name?.charCodeAt(0) || 0) * 13 % 360;
 
   return (
     <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-background/60 backdrop-blur-sm"
-        onClick={onClose}
-      >
-        <motion.div
-          initial={{ y: 60, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 60, opacity: 0 }}
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-foreground/40"
+        onClick={onClose}>
+        <motion.div initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 60, opacity: 0 }}
           transition={{ type: 'spring', damping: 25 }}
           onClick={e => e.stopPropagation()}
-          className="glass-panel-strong rounded-2xl w-full max-w-sm overflow-hidden"
-        >
+          className="bg-card rounded-2xl w-full max-w-sm overflow-hidden shadow-xl border border-border">
+          
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-border/30">
-            <h2 className="font-bold text-base">Profile</h2>
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-muted/50 text-muted-foreground">
+          <div className="bg-primary px-4 py-3 flex items-center justify-between">
+            <h2 className="font-bold text-base text-primary-foreground">Profile</h2>
+            <button onClick={onClose} className="p-1.5 rounded-full hover:bg-primary-foreground/10 text-primary-foreground">
               <X size={18} />
             </button>
           </div>
@@ -77,25 +65,21 @@ const ProfileSheet = ({ onClose }: ProfileSheetProps) => {
             {/* Avatar */}
             <div className="flex flex-col items-center">
               <div className="relative">
-                <div
-                  className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold text-white overflow-hidden"
-                  style={{ background: profile?.avatar_url ? undefined : `hsl(${hue}, 70%, 45%)` }}
-                >
-                  {profile?.avatar_url ? (
-                    <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
-                  ) : initials}
+                <div className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold text-primary-foreground overflow-hidden"
+                  style={{ background: profile?.avatar_url ? undefined : `hsl(${hue}, 60%, 55%)` }}>
+                  {profile?.avatar_url ? <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" /> : initials}
                 </div>
-                <button
-                  onClick={() => fileRef.current?.click()}
-                  className="absolute -bottom-1 -right-1 p-1.5 rounded-full bg-primary text-primary-foreground"
-                  disabled={uploading}
-                >
+                <button onClick={() => fileRef.current?.click()}
+                  className="absolute -bottom-1 -right-1 p-1.5 rounded-full bg-primary text-primary-foreground shadow-md"
+                  disabled={uploading}>
                   <Camera size={14} />
                 </button>
                 <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
               </div>
-              <div className="w-2 h-2 rounded-full bg-emerald-400 mt-2" />
-              <p className="text-xs text-muted-foreground mt-0.5">Online</p>
+              <div className="flex items-center gap-1.5 mt-2">
+                <div className="w-2 h-2 rounded-full status-online" />
+                <p className="text-xs text-muted-foreground">Online</p>
+              </div>
             </div>
 
             {/* Name */}
@@ -104,23 +88,15 @@ const ProfileSheet = ({ onClose }: ProfileSheetProps) => {
               <div className="flex items-center gap-2">
                 {editingName ? (
                   <>
-                    <input
-                      value={name}
-                      onChange={e => setName(e.target.value)}
-                      className="flex-1 px-3 py-2 rounded-xl bg-muted/40 border border-primary/50 text-sm focus:outline-none"
-                      autoFocus
-                    />
+                    <input value={name} onChange={e => setName(e.target.value)}
+                      className="flex-1 px-3 py-2.5 rounded-xl bg-background border border-primary text-sm focus:outline-none" autoFocus />
                     <button onClick={() => { saveField('display_name', name); setEditingName(false); }}
-                      className="p-2 rounded-lg bg-primary/20 text-primary">
-                      <Check size={15} />
-                    </button>
+                      className="p-2 rounded-lg bg-primary text-primary-foreground"><Check size={15} /></button>
                   </>
                 ) : (
-                  <div className="flex items-center gap-2 flex-1 px-3 py-2 rounded-xl bg-muted/30">
+                  <div className="flex items-center gap-2 flex-1 px-3 py-2.5 rounded-xl bg-muted/50">
                     <span className="flex-1 text-sm">{profile?.display_name}</span>
-                    <button onClick={() => setEditingName(true)} className="text-muted-foreground hover:text-foreground">
-                      <Edit2 size={14} />
-                    </button>
+                    <button onClick={() => setEditingName(true)} className="text-muted-foreground hover:text-foreground"><Edit2 size={14} /></button>
                   </div>
                 )}
               </div>
@@ -132,50 +108,39 @@ const ProfileSheet = ({ onClose }: ProfileSheetProps) => {
               <div className="flex items-center gap-2">
                 {editingAbout ? (
                   <>
-                    <input
-                      value={about}
-                      onChange={e => setAbout(e.target.value)}
-                      className="flex-1 px-3 py-2 rounded-xl bg-muted/40 border border-primary/50 text-sm focus:outline-none"
-                      autoFocus
-                    />
+                    <input value={about} onChange={e => setAbout(e.target.value)}
+                      className="flex-1 px-3 py-2.5 rounded-xl bg-background border border-primary text-sm focus:outline-none" autoFocus />
                     <button onClick={() => { saveField('about', about); setEditingAbout(false); }}
-                      className="p-2 rounded-lg bg-primary/20 text-primary">
-                      <Check size={15} />
-                    </button>
+                      className="p-2 rounded-lg bg-primary text-primary-foreground"><Check size={15} /></button>
                   </>
                 ) : (
-                  <div className="flex items-center gap-2 flex-1 px-3 py-2 rounded-xl bg-muted/30">
+                  <div className="flex items-center gap-2 flex-1 px-3 py-2.5 rounded-xl bg-muted/50">
                     <span className="flex-1 text-sm text-muted-foreground">{profile?.about}</span>
-                    <button onClick={() => setEditingAbout(true)} className="text-muted-foreground hover:text-foreground">
-                      <Edit2 size={14} />
-                    </button>
+                    <button onClick={() => setEditingAbout(true)} className="text-muted-foreground hover:text-foreground"><Edit2 size={14} /></button>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Settings shortcuts */}
+            {/* Settings */}
             <div className="space-y-1">
               {[
                 { icon: Bell, label: 'Notifications' },
                 { icon: Lock, label: 'Privacy' },
                 { icon: Moon, label: 'Appearance' },
               ].map(item => (
-                <button key={item.label} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-muted/30 text-sm text-muted-foreground hover:text-foreground transition-all">
-                  <item.icon size={16} />
+                <button key={item.label} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-muted/50 text-sm text-muted-foreground hover:text-foreground transition-all">
+                  <item.icon size={18} />
                   <span className="flex-1 text-left">{item.label}</span>
-                  <ChevronRight size={14} />
+                  <ChevronRight size={16} />
                 </button>
               ))}
             </div>
 
             {/* Sign Out */}
-            <button
-              onClick={handleSignOut}
-              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-destructive/15 text-destructive text-sm font-medium hover:bg-destructive/25 transition-all"
-            >
-              <LogOut size={16} />
-              Sign Out
+            <button onClick={handleSignOut}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-destructive/10 text-destructive text-sm font-medium hover:bg-destructive/20 transition-all">
+              <LogOut size={16} /> Sign Out
             </button>
           </div>
         </motion.div>

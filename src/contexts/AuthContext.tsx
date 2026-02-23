@@ -32,75 +32,68 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const loadingTimeoutRef = useRef<NodeJS.Timeout>();
+  const presenceChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   const loadProfile = async (userId: string, retries = 3): Promise<void> => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
-      if (data) {
-        setProfile(data as Profile);
-        return;
-      }
-      // Profile not found — trigger may not have fired yet; retry or create manually
-      if (error && retries > 0) {
-        await new Promise(r => setTimeout(r, 800));
-        return loadProfile(userId, retries - 1);
-      }
-      // After retries, create profile manually as fallback
+      const { data, error } = await supabase.from('profiles').select('*').eq('user_id', userId).single();
+      if (data) { setProfile(data as Profile); return; }
+      if (error && retries > 0) { await new Promise(r => setTimeout(r, 800)); return loadProfile(userId, retries - 1); }
       if (!data) {
         const { data: userData } = await supabase.auth.getUser();
         const meta = userData?.user?.user_metadata || {};
         const displayName = meta.full_name || meta.name || meta.display_name || userData?.user?.email?.split('@')[0] || 'User';
-        const { data: created } = await supabase
-          .from('profiles')
+        const { data: created } = await supabase.from('profiles')
           .insert({ user_id: userId, display_name: displayName, avatar_url: meta.avatar_url || meta.picture || null })
-          .select()
-          .single();
+          .select().single();
         if (created) setProfile(created as Profile);
       }
-    } catch (err) {
-      console.warn('Profile load error:', err);
-    }
+    } catch (err) { console.warn('Profile load error:', err); }
   };
 
-  const refreshProfile = async () => {
-    if (user) await loadProfile(user.id);
+  const refreshProfile = async () => { if (user) await loadProfile(user.id); };
+
+  // Setup presence tracking
+  const setupPresence = (userId: string) => {
+    if (presenceChannelRef.current) supabase.removeChannel(presenceChannelRef.current);
+
+    // Mark online
+    supabase.from('profiles').update({ is_online: true, last_seen: new Date().toISOString() })
+      .eq('user_id', userId).then(() => {});
+
+    // Use visibility change for online/offline
+    const handleVisibility = () => {
+      if (document.hidden) {
+        supabase.from('profiles').update({ is_online: false, last_seen: new Date().toISOString() })
+          .eq('user_id', userId).then(() => {});
+      } else {
+        supabase.from('profiles').update({ is_online: true })
+          .eq('user_id', userId).then(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   };
 
   useEffect(() => {
     registerServiceWorker();
+    let cleanupPresence: (() => void) | null = null;
 
-    // Safety timeout: never stuck loading > 8s
-    loadingTimeoutRef.current = setTimeout(() => {
-      setLoading(false);
-    }, 8000);
+    loadingTimeoutRef.current = setTimeout(() => setLoading(false), 8000);
 
-    // Set up listener BEFORE getSession
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
 
       if (session?.user) {
-        // Load profile non-blocking
         loadProfile(session.user.id).then(() => {
           setLoading(false);
           clearTimeout(loadingTimeoutRef.current);
         });
-
-        // Mark online (deferred)
-        setTimeout(async () => {
-          try {
-            await supabase
-              .from('profiles')
-              .update({ is_online: true })
-              .eq('user_id', session.user.id);
-          } catch {}
-        }, 500);
-
-        // Request notification permission
+        cleanupPresence = setupPresence(session.user.id);
         requestNotificationPermission().catch(() => {});
       } else {
         setProfile(null);
@@ -109,17 +102,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     });
 
-    // Check existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        setLoading(false);
-        clearTimeout(loadingTimeoutRef.current);
-      }
+      if (!session) { setLoading(false); clearTimeout(loadingTimeoutRef.current); }
     });
 
     return () => {
       subscription.unsubscribe();
       clearTimeout(loadingTimeoutRef.current);
+      cleanupPresence?.();
     };
   }, []);
 
@@ -127,8 +117,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const markOffline = async () => {
       if (user) {
         try {
-          await supabase
-            .from('profiles')
+          await supabase.from('profiles')
             .update({ is_online: false, last_seen: new Date().toISOString() })
             .eq('user_id', user.id);
         } catch {}
@@ -141,26 +130,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const signOut = async () => {
     if (user) {
       try {
-        await supabase
-          .from('profiles')
-          .update({ is_online: false, last_seen: new Date().toISOString() })
-          .eq('user_id', user.id);
+        await supabase.from('profiles').update({ is_online: false, last_seen: new Date().toISOString() }).eq('user_id', user.id);
       } catch {}
     }
     await supabase.auth.signOut();
-    setUser(null);
-    setSession(null);
-    setProfile(null);
+    setUser(null); setSession(null); setProfile(null);
   };
 
   const updateProfile = async (data: Partial<Omit<Profile, 'id' | 'user_id'>>) => {
     if (!user) return;
-    const { data: updated } = await supabase
-      .from('profiles')
-      .update(data)
-      .eq('user_id', user.id)
-      .select()
-      .single();
+    const { data: updated } = await supabase.from('profiles').update(data).eq('user_id', user.id).select().single();
     if (updated) setProfile(updated as Profile);
   };
 
