@@ -6,7 +6,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useChats } from '@/hooks/useChats';
 import { supabase } from '@/integrations/supabase/client';
 import { showLocalNotification } from '@/lib/notifications';
-import AnimatedBackground from '@/components/chat/AnimatedBackground';
 import ChatSidebar from '@/components/chat/ChatSidebar';
 import ChatArea from '@/components/chat/ChatArea';
 import EmptyState from '@/components/chat/EmptyState';
@@ -71,68 +70,40 @@ const Index = () => {
     setActiveCall({ chat, callType, isIncoming: false });
   };
 
-  // Listen for incoming calls via realtime
+  // Listen for incoming calls
   useEffect(() => {
     if (!user) return;
-
     const channel = supabase
       .channel(`incoming-calls-${user.id}`)
       .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'calls',
+        event: 'INSERT', schema: 'public', table: 'calls',
         filter: `callee_id=eq.${user.id}`,
       }, async (payload) => {
-        const callRow = payload.new as {
-          id: string;
-          call_type: 'audio' | 'video';
-          caller_id: string;
-          chat_id: string;
-          status: string;
-        };
+        const callRow = payload.new as any;
         if (callRow.status !== 'ringing') return;
-
-        const { data: callerProfile } = await supabase
-          .from('profiles').select('*').eq('user_id', callRow.caller_id).single();
-
+        const { data: callerProfile } = await supabase.from('profiles').select('*').eq('user_id', callRow.caller_id).single();
         const chat = chats.find(c => c.id === callRow.chat_id);
         if (!chat) return;
-
         const incoming: IncomingCall = {
-          callId: callRow.id,
-          callType: callRow.call_type as 'audio' | 'video',
+          callId: callRow.id, callType: callRow.call_type,
           callerId: callRow.caller_id,
           callerName: callerProfile?.display_name || 'Unknown',
-          callerAvatar: callerProfile?.avatar_url || null,
-          chat,
+          callerAvatar: callerProfile?.avatar_url || null, chat,
         };
-
         setIncomingCall(incoming);
-
         if (document.hidden) {
-          showLocalNotification(
-            `Incoming ${callRow.call_type} call`,
-            `${incoming.callerName} is calling you`,
-            callRow.id
-          );
+          showLocalNotification(`Incoming ${callRow.call_type} call`, `${incoming.callerName} is calling you`, callRow.id);
         }
-
-        // Auto-dismiss after 30s
-        setTimeout(() => {
-          setIncomingCall(prev => prev?.callId === callRow.id ? null : prev);
-        }, 30000);
-      })
-      .subscribe();
-
+        setTimeout(() => { setIncomingCall(prev => prev?.callId === callRow.id ? null : prev); }, 30000);
+      }).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [user, chats]);
 
   if (loading) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center gradient-mesh">
-        <AnimatedBackground />
-        <div className="relative z-10 flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+      <div className="h-screen w-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-3 border-primary/30 border-t-primary rounded-full animate-spin" />
           <p className="text-sm text-muted-foreground">Loading HyperChat...</p>
         </div>
       </div>
@@ -146,35 +117,27 @@ const Index = () => {
   const totalUnread = chats.filter(c => c.unread_count > 0).length;
 
   return (
-    <div className="h-screen w-screen overflow-hidden gradient-mesh relative">
-      <AnimatedBackground />
-
-      <div className="relative z-10 h-full flex">
+    <div className="h-screen w-screen overflow-hidden bg-background relative">
+      <div className="h-full flex">
         {/* Sidebar */}
-        <div className={`glass-panel-strong border-r border-border/25 w-full lg:w-80 xl:w-96 flex-shrink-0 ${
+        <div className={`bg-card border-r border-border w-full lg:w-80 xl:w-96 flex-shrink-0 ${
           activeChatId ? 'hidden lg:flex' : 'flex'
         } flex-col pb-16 lg:pb-0`}>
           <ChatSidebar
-            chats={chats}
-            activeChatId={activeChatId}
-            onSelectChat={handleSelectChat}
-            currentUserId={user.id}
+            chats={chats} activeChatId={activeChatId}
+            onSelectChat={handleSelectChat} currentUserId={user.id}
             onNewChat={() => setShowNewChat(true)}
             onOpenProfile={() => setShowProfile(true)}
-            profile={profile}
-            activeTab={activeTab}
+            profile={profile} activeTab={activeTab}
           />
         </div>
 
         {/* Chat Area */}
         <div className={`flex-1 min-w-0 ${!activeChatId ? 'hidden lg:flex' : 'flex'} flex-col pb-16 lg:pb-0`}>
           {activeChat ? (
-            <ChatArea
-              chat={activeChat}
-              currentUser={profile}
+            <ChatArea chat={activeChat} currentUser={profile}
               onBack={() => { setActiveChatId(null); setShowInfo(false); }}
-              onOpenInfo={() => setShowInfo(true)}
-              onStartCall={startCall}
+              onOpenInfo={() => setShowInfo(true)} onStartCall={startCall}
             />
           ) : (
             <EmptyState onNewChat={() => setShowNewChat(true)} />
@@ -185,11 +148,9 @@ const Index = () => {
         <AnimatePresence>
           {activeChat && showInfo && (
             <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 300, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ type: 'spring', damping: 25 }}
-              className="glass-panel-strong border-l border-border/25 overflow-hidden hidden xl:block flex-shrink-0"
+              initial={{ width: 0, opacity: 0 }} animate={{ width: 300, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }} transition={{ type: 'spring', damping: 25 }}
+              className="bg-card border-l border-border overflow-hidden hidden xl:block flex-shrink-0"
             >
               <InfoPanel chat={activeChat} onClose={() => setShowInfo(false)} />
             </motion.div>
@@ -198,22 +159,16 @@ const Index = () => {
       </div>
 
       {/* Mobile Bottom Nav */}
-      <BottomNav
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-        unreadCount={totalUnread}
-      />
+      <BottomNav activeTab={activeTab} onTabChange={handleTabChange} unreadCount={totalUnread} />
 
-      {/* FAB — Add People button (mobile bottom right) */}
+      {/* FAB */}
       <AnimatePresence>
         {!activeChatId && (
           <motion.button
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0, opacity: 0 }}
+            initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
             whileTap={{ scale: 0.9 }}
             onClick={() => setShowNewChat(true)}
-            className="fixed bottom-20 right-4 z-40 lg:hidden w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-2xl neon-glow-cyan"
+            className="fixed bottom-20 right-4 z-40 lg:hidden w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg"
           >
             <MessageSquarePlus size={24} />
           </motion.button>
@@ -222,32 +177,19 @@ const Index = () => {
 
       {/* Modals */}
       {showNewChat && (
-        <NewChatModal
-          onClose={() => setShowNewChat(false)}
-          onChatCreated={handleChatCreated}
-          createDirectChat={createDirectChat}
-          createGroupChat={createGroupChat}
-        />
+        <NewChatModal onClose={() => setShowNewChat(false)} onChatCreated={handleChatCreated}
+          createDirectChat={createDirectChat} createGroupChat={createGroupChat} />
       )}
+      {showProfile && <ProfileSheet onClose={() => setShowProfile(false)} />}
 
-      {showProfile && (
-        <ProfileSheet onClose={() => setShowProfile(false)} />
-      )}
-
-      {/* Incoming call banner */}
+      {/* Incoming call */}
       <AnimatePresence>
         {incomingCall && !activeCall && (
           <IncomingCallBanner
-            callerName={incomingCall.callerName}
-            callerAvatar={incomingCall.callerAvatar}
+            callerName={incomingCall.callerName} callerAvatar={incomingCall.callerAvatar}
             callType={incomingCall.callType}
             onAccept={() => {
-              setActiveCall({
-                chat: incomingCall.chat,
-                callType: incomingCall.callType,
-                callId: incomingCall.callId,
-                isIncoming: true,
-              });
+              setActiveCall({ chat: incomingCall.chat, callType: incomingCall.callType, callId: incomingCall.callId, isIncoming: true });
               setIncomingCall(null);
             }}
             onDecline={() => setIncomingCall(null)}
@@ -255,17 +197,12 @@ const Index = () => {
         )}
       </AnimatePresence>
 
-      {/* Active call screen */}
+      {/* Active call */}
       <AnimatePresence>
         {activeCall && (
-          <CallScreen
-            chat={activeCall.chat}
-            callType={activeCall.callType}
-            callId={activeCall.callId}
-            isIncoming={activeCall.isIncoming}
-            currentUser={profile}
-            onEnd={() => setActiveCall(null)}
-          />
+          <CallScreen chat={activeCall.chat} callType={activeCall.callType}
+            callId={activeCall.callId} isIncoming={activeCall.isIncoming}
+            currentUser={profile} onEnd={() => setActiveCall(null)} />
         )}
       </AnimatePresence>
     </div>

@@ -2,65 +2,50 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 @layer base {
   :root {
-    --background: 228 28% 6%;
-    --foreground: 210 30% 95%;
+    --background: 0 0% 97%;
+    --foreground: 0 0% 10%;
 
-    --card: 228 22% 9%;
-    --card-foreground: 210 30% 95%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 10%;
 
-    --popover: 228 22% 9%;
-    --popover-foreground: 210 30% 95%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 10%;
 
-    --primary: 162 85% 45%;
-    --primary-foreground: 228 28% 6%;
+    --primary: 340 82% 52%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 255 65% 58%;
-    --secondary-foreground: 210 30% 98%;
+    --secondary: 340 30% 94%;
+    --secondary-foreground: 340 82% 40%;
 
-    --muted: 228 18% 14%;
-    --muted-foreground: 215 15% 52%;
+    --muted: 0 0% 93%;
+    --muted-foreground: 0 0% 45%;
 
-    --accent: 315 75% 58%;
-    --accent-foreground: 210 30% 98%;
+    --accent: 340 50% 95%;
+    --accent-foreground: 340 82% 40%;
 
     --destructive: 0 72% 52%;
-    --destructive-foreground: 210 30% 98%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 228 18% 16%;
-    --input: 228 18% 16%;
-    --ring: 162 85% 45%;
+    --border: 0 0% 88%;
+    --input: 0 0% 88%;
+    --ring: 340 82% 52%;
 
-    --radius: 0.8rem;
+    --radius: 0.75rem;
 
-    --neon-cyan: 162 85% 45%;
-    --neon-purple: 255 65% 58%;
-    --neon-pink: 315 75% 58%;
-    --neon-blue: 215 80% 58%;
-    --neon-amber: 38 90% 55%;
+    --online: 145 75% 42%;
 
-    --glass-bg: 228 22% 10%;
-    --glass-border: 228 18% 20%;
-    --glass-hover: 228 18% 14%;
-
-    --sidebar-background: 228 25% 8%;
-    --sidebar-foreground: 210 30% 95%;
-    --sidebar-primary: 162 85% 45%;
-    --sidebar-primary-foreground: 228 28% 6%;
-    --sidebar-accent: 228 18% 14%;
-    --sidebar-accent-foreground: 210 30% 95%;
-    --sidebar-border: 228 18% 16%;
-    --sidebar-ring: 162 85% 45%;
-
-    --success: 150 72% 42%;
-    --warning: 38 92% 52%;
-    --online: 145 75% 48%;
-
-    --font-display: 'Space Grotesk', sans-serif;
-    --font-mono: 'JetBrains Mono', monospace;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 0 0% 10%;
+    --sidebar-primary: 340 82% 52%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 340 50% 95%;
+    --sidebar-accent-foreground: 0 0% 10%;
+    --sidebar-border: 0 0% 90%;
+    --sidebar-ring: 340 82% 52%;
   }
 }
 
@@ -71,7 +56,7 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: var(--font-display);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -92,97 +77,25 @@
 }
 
 @layer utilities {
-  .glass-panel {
-    background: hsl(var(--glass-bg) / 0.65);
-    backdrop-filter: blur(24px) saturate(1.6);
-    -webkit-backdrop-filter: blur(24px) saturate(1.6);
-    border: 1px solid hsl(var(--glass-border) / 0.45);
-  }
-
-  .glass-panel-strong {
-    background: hsl(var(--glass-bg) / 0.88);
-    backdrop-filter: blur(32px) saturate(1.9);
-    -webkit-backdrop-filter: blur(32px) saturate(1.9);
-    border: 1px solid hsl(var(--glass-border) / 0.55);
-  }
-
-  .neon-glow-cyan {
-    box-shadow: 0 0 18px hsl(var(--neon-cyan) / 0.28),
-                0 0 50px hsl(var(--neon-cyan) / 0.08);
-  }
-
-  .neon-glow-purple {
-    box-shadow: 0 0 18px hsl(var(--neon-purple) / 0.28),
-                0 0 50px hsl(var(--neon-purple) / 0.08);
-  }
-
-  .neon-text-cyan {
-    color: hsl(var(--neon-cyan));
-    text-shadow: 0 0 15px hsl(var(--neon-cyan) / 0.55),
-                 0 0 40px hsl(var(--neon-cyan) / 0.18);
-  }
-
-  .neon-text-purple {
-    color: hsl(var(--neon-purple));
-    text-shadow: 0 0 12px hsl(var(--neon-purple) / 0.5),
-                 0 0 35px hsl(var(--neon-purple) / 0.18);
-  }
-
-  .gradient-mesh {
-    background:
-      radial-gradient(ellipse at 15% 40%, hsl(var(--neon-cyan) / 0.07) 0%, transparent 55%),
-      radial-gradient(ellipse at 85% 15%, hsl(var(--neon-purple) / 0.07) 0%, transparent 55%),
-      radial-gradient(ellipse at 55% 85%, hsl(var(--neon-pink) / 0.05) 0%, transparent 55%),
-      radial-gradient(ellipse at 50% 50%, hsl(var(--neon-blue) / 0.03) 0%, transparent 70%),
-      hsl(var(--background));
-  }
-
   .message-bubble-sent {
-    background: linear-gradient(135deg, hsl(var(--neon-cyan) / 0.22), hsl(var(--neon-blue) / 0.15));
-    border: 1px solid hsl(var(--neon-cyan) / 0.25);
+    background: hsl(340 82% 95%);
   }
 
   .message-bubble-received {
-    background: hsl(var(--glass-bg) / 0.8);
-    border: 1px solid hsl(var(--glass-border) / 0.35);
+    background: hsl(0 0% 100%);
   }
 
   .status-online {
     background: hsl(var(--online));
-    box-shadow: 0 0 8px hsl(var(--online) / 0.7);
   }
 
   .status-offline {
     background: hsl(var(--muted-foreground) / 0.35);
   }
 
-  .chat-input-area {
-    background: hsl(var(--glass-bg) / 0.92);
-    border: 1px solid hsl(var(--glass-border) / 0.45);
-    backdrop-filter: blur(20px);
-  }
-
-  /* Bubble tails */
-  .bubble-tail-sent::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    right: -6px;
-    width: 0;
-    height: 0;
-    border-left: 8px solid hsl(var(--neon-cyan) / 0.22);
-    border-bottom: 8px solid transparent;
-  }
-
-  .bubble-tail-received::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: -6px;
-    width: 0;
-    height: 0;
-    border-right: 8px solid hsl(var(--glass-bg) / 0.8);
-    border-bottom: 8px solid transparent;
+  .chat-wallpaper {
+    background-color: hsl(340 20% 92%);
+    background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23e8b4c8' fill-opacity='0.15'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
   }
 
   /* Safe area for mobile */
@@ -205,7 +118,7 @@
     30% { transform: translateY(-5px); opacity: 1; }
   }
 
-  /* Pulse ring */
+  /* Pulse ring for online status */
   .pulse-ring {
     animation: pulseRing 2s infinite;
   }
@@ -213,14 +126,6 @@
   @keyframes pulseRing {
     0%, 100% { box-shadow: 0 0 0 0 hsl(var(--online) / 0.4); }
     50% { box-shadow: 0 0 0 4px hsl(var(--online) / 0); }
-  }
-
-  /* Avatar ring */
-  .avatar-ring-online {
-    ring: 2px;
-    ring-color: hsl(var(--online));
-    ring-offset: 2px;
-    ring-offset-color: hsl(var(--background));
   }
 
   /* Message slide-in */
@@ -234,26 +139,9 @@
   }
 
   .msg-slide-sent {
-    animation: slideInRight 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    animation: slideInRight 0.2s ease-out forwards;
   }
   .msg-slide-received {
-    animation: slideInLeft 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-  }
-
-  /* Shimmer loading */
-  .shimmer {
-    background: linear-gradient(
-      90deg,
-      hsl(var(--muted) / 0.5) 25%,
-      hsl(var(--muted-foreground) / 0.1) 50%,
-      hsl(var(--muted) / 0.5) 75%
-    );
-    background-size: 200% 100%;
-    animation: shimmer 1.5s infinite;
-  }
-
-  @keyframes shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+    animation: slideInLeft 0.2s ease-out forwards;
   }
 }

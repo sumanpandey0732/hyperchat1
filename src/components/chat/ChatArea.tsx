@@ -2,8 +2,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Phone, Video, MoreVertical, Send, Paperclip, Smile,
-  Mic, Lock, ArrowLeft, X, CheckCheck, Check,
-  Trash2, Reply, Download, Image as ImageIcon
+  Mic, ArrowLeft, X, CheckCheck, Check,
+  Trash2, Reply, Download
 } from 'lucide-react';
 import { useMessages, type Message } from '@/hooks/useMessages';
 import type { ChatWithMeta } from '@/hooks/useChats';
@@ -22,7 +22,7 @@ const avatarHue = (name: string) => (name.charCodeAt(0) * 13) % 360;
 const emojis = ['😀','😂','❤️','🔥','👍','🎉','✨','🚀','💡','🎧','🎮','💎','🌙','⚡','🎵','🙏'];
 
 const TypingDots = ({ names }: { names: string[] }) => (
-  <div className="flex items-end gap-1 px-4 py-2.5 rounded-2xl rounded-bl-md message-bubble-received max-w-fit">
+  <div className="flex items-end gap-1 px-4 py-2.5 rounded-2xl rounded-bl-md message-bubble-received max-w-fit shadow-sm">
     <span className="text-xs text-muted-foreground mr-1">
       {names.length === 1 ? names[0] : `${names.length} people`} typing
     </span>
@@ -33,7 +33,7 @@ const TypingDots = ({ names }: { names: string[] }) => (
 );
 
 const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAreaProps) => {
-  const { messages, loading, typingUsers, sendMessage, sendTypingIndicator, deleteMessage, uploadFile } = useMessages(chat.id);
+  const { messages, loading, typingUsers, sendMessage, sendTypingIndicator, deleteMessage, uploadFile, markAsRead } = useMessages(chat.id);
   const [input, setInput] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
   const [selectedMsg, setSelectedMsg] = useState<Message | null>(null);
@@ -48,36 +48,32 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
 
+  // Mark messages as read when chat is opened
+  useEffect(() => {
+    if (chat.id && markAsRead) {
+      markAsRead();
+    }
+  }, [chat.id, messages.length, markAsRead]);
+
   const handleSend = useCallback(async () => {
     const content = input.trim();
     if (!content) return;
     setInput('');
     setReplyTo(null);
     setShowEmoji(false);
-    // Reset textarea height
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
     const ok = await sendMessage(content);
-    if (!ok) {
-      toast.error('Failed to send. Check connection.');
-      setInput(content);
-    }
+    if (!ok) { toast.error('Failed to send'); setInput(content); }
   }, [input, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
     e.target.style.height = 'auto';
     e.target.style.height = Math.min(e.target.scrollHeight, 128) + 'px';
-
-    // Send typing indicator (debounced)
     clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
       sendTypingIndicator(currentUser.display_name);
@@ -91,52 +87,47 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
     setUploading(true);
     const result = await uploadFile(file);
     if (result) {
-      const type = file.type.startsWith('image/') ? 'image' 
-        : file.type.startsWith('video/') ? 'video' 
-        : file.type.startsWith('audio/') ? 'audio'
-        : 'file';
+      const type = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'audio' : 'file';
       await sendMessage(file.name, type, { file_url: result.url, file_name: result.name, file_type: result.type });
-    } else {
-      toast.error('Upload failed. Try again.');
-    }
+    } else { toast.error('Upload failed'); }
     setUploading(false);
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  const chatName = chat.is_group
-    ? chat.group_name || 'Group'
-    : chat.members[0]?.display_name || 'Unknown';
+  const chatName = chat.is_group ? chat.group_name || 'Group' : chat.members[0]?.display_name || 'Unknown';
   const chatMember = chat.is_group ? null : chat.members[0] || null;
   const isOnline = !chat.is_group && chatMember?.is_online;
   const memberCount = chat.members.length + 1;
 
   const statusText = chat.is_group
     ? `${memberCount} members`
-    : isOnline ? 'Online'
+    : isOnline ? 'online'
     : chatMember?.last_seen
       ? `last seen ${new Date(chatMember.last_seen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-      : 'Offline';
+      : 'offline';
 
   const formatMsgTime = (d: string) => new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const getStatusIcon = (msg: Message, isSent: boolean) => {
+    if (!isSent) return null;
+    if (msg.status === 'read') return <CheckCheck size={14} className="text-primary" />;
+    if (msg.status === 'delivered') return <CheckCheck size={14} className="text-muted-foreground" />;
+    return <Check size={14} className="text-muted-foreground" />;
+  };
 
   const renderMessage = (msg: Message, isSent: boolean, showAvatar: boolean) => {
     const hue = avatarHue(msg.sender?.display_name || '');
 
     return (
-      <motion.div
-        key={msg.id}
-        initial={{ opacity: 0, scale: 0.92, y: 8 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ type: 'spring', stiffness: 380, damping: 28 }}
-        className={`flex mb-0.5 ${isSent ? 'justify-end' : 'justify-start'}`}
+      <div key={msg.id}
+        className={`flex mb-1 ${isSent ? 'justify-end' : 'justify-start'}`}
         onClick={(e) => { e.stopPropagation(); setSelectedMsg(selectedMsg?.id === msg.id ? null : msg); }}
       >
-        {/* Group avatar */}
         {!isSent && chat.is_group && (
           <div className="w-8 flex-shrink-0 mr-1.5 mt-auto">
             {showAvatar && (
-              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold overflow-hidden"
-                style={{ background: msg.sender?.avatar_url ? undefined : `hsl(${hue}, 70%, 45%)` }}>
+              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold overflow-hidden text-primary-foreground"
+                style={{ background: msg.sender?.avatar_url ? undefined : `hsl(${hue}, 60%, 55%)` }}>
                 {msg.sender?.avatar_url
                   ? <img src={msg.sender.avatar_url} alt="" className="w-full h-full object-cover" />
                   : msg.sender?.display_name?.[0]?.toUpperCase()}
@@ -147,92 +138,69 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
 
         <div className={`max-w-[75%] lg:max-w-[60%] flex flex-col ${isSent ? 'items-end' : 'items-start'}`}>
           {!isSent && chat.is_group && showAvatar && (
-            <span className="text-[10px] font-semibold px-1 mb-0.5"
-              style={{ color: `hsl(${hue}, 70%, 60%)` }}>
+            <span className="text-[11px] font-semibold px-2 mb-0.5 text-primary">
               {msg.sender?.display_name}
             </span>
           )}
 
-          <div className={`relative px-3.5 py-2.5 rounded-2xl ${isSent
-            ? 'message-bubble-sent rounded-br-sm'
-            : 'message-bubble-received rounded-bl-sm'
+          <div className={`relative px-3 py-2 rounded-2xl shadow-sm ${isSent
+            ? 'message-bubble-sent rounded-br-md'
+            : 'message-bubble-received rounded-bl-md'
           }`}>
-            {/* Reply preview */}
             {msg.reply_to && (
-              <div className="mb-1.5 px-2 py-1 rounded-lg border-l-2 border-primary bg-muted/30 text-xs text-muted-foreground">
+              <div className="mb-1.5 px-2 py-1 rounded-lg border-l-2 border-primary bg-primary/10 text-xs text-muted-foreground">
                 ↩ Replied to message
               </div>
             )}
 
-            {/* Image */}
             {msg.type === 'image' && msg.file_url && (
               <div className="mb-1.5 -mx-1">
-                <img
-                  src={msg.file_url}
-                  alt={msg.file_name || 'Image'}
-                  className="rounded-xl max-w-full max-h-64 object-cover cursor-pointer"
-                  loading="lazy"
-                  onClick={() => window.open(msg.file_url!, '_blank')}
-                />
+                <img src={msg.file_url} alt={msg.file_name || 'Image'}
+                  className="rounded-xl max-w-full max-h-64 object-cover cursor-pointer" loading="lazy"
+                  onClick={() => window.open(msg.file_url!, '_blank')} />
               </div>
             )}
-
-            {/* Video */}
             {msg.type === 'video' && msg.file_url && (
               <video src={msg.file_url} controls className="rounded-xl max-w-full max-h-48 mb-1.5" />
             )}
-
-            {/* Audio */}
             {msg.type === 'audio' && msg.file_url && (
               <audio src={msg.file_url} controls className="mb-1.5 w-48" />
             )}
-
-            {/* File */}
             {msg.type === 'file' && msg.file_url && (
               <a href={msg.file_url} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-2 mb-1.5 px-2 py-1.5 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors">
+                className="flex items-center gap-2 mb-1.5 px-2 py-1.5 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
                 <Paperclip size={14} className="text-primary flex-shrink-0" />
                 <span className="text-xs truncate max-w-[140px]">{msg.file_name}</span>
                 <Download size={12} className="flex-shrink-0 text-muted-foreground" />
               </a>
             )}
 
-            {/* Text */}
             {msg.content && msg.type !== 'image' && msg.type !== 'video' && msg.type !== 'audio' && (
-              <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap break-words text-foreground">{msg.content}</p>
             )}
-            {/* Image caption */}
             {msg.content && (msg.type === 'image' || msg.type === 'video') && msg.content !== msg.file_name && (
-              <p className="text-xs mt-1 leading-relaxed">{msg.content}</p>
+              <p className="text-xs mt-1 leading-relaxed text-foreground">{msg.content}</p>
             )}
 
-            {/* Time + read receipt */}
             <div className={`flex items-center gap-1 mt-0.5 ${isSent ? 'justify-end' : 'justify-start'}`}>
-              <span className="text-[10px] text-muted-foreground/60">
-                {formatMsgTime(msg.created_at)}
-              </span>
-              {isSent && (
-                <CheckCheck size={12} className="text-primary" />
-              )}
+              <span className="text-[10px] text-muted-foreground">{formatMsgTime(msg.created_at)}</span>
+              {getStatusIcon(msg, isSent)}
             </div>
           </div>
 
-          {/* Action buttons on tap */}
+          {/* Actions on tap */}
           <AnimatePresence>
             {selectedMsg?.id === msg.id && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8, y: -5 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.8, y: -5 }}
-                className={`flex gap-1 mt-1 ${isSent ? 'flex-row-reverse' : 'flex-row'}`}
-              >
+              <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                className={`flex gap-1 mt-1 ${isSent ? 'flex-row-reverse' : 'flex-row'}`}>
                 <button onClick={(e) => { e.stopPropagation(); setReplyTo(msg); setSelectedMsg(null); }}
-                  className="p-1.5 rounded-lg glass-panel text-muted-foreground hover:text-foreground text-xs flex items-center gap-1">
+                  className="p-1.5 rounded-lg bg-card border border-border text-muted-foreground hover:text-foreground text-xs flex items-center gap-1 shadow-sm">
                   <Reply size={13} /> Reply
                 </button>
                 {isSent && (
                   <button onClick={(e) => { e.stopPropagation(); deleteMessage(msg.id); setSelectedMsg(null); }}
-                    className="p-1.5 rounded-lg glass-panel text-destructive text-xs flex items-center gap-1">
+                    className="p-1.5 rounded-lg bg-card border border-border text-destructive text-xs flex items-center gap-1 shadow-sm">
                     <Trash2 size={13} /> Delete
                   </button>
                 )}
@@ -240,7 +208,7 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
             )}
           </AnimatePresence>
         </div>
-      </motion.div>
+      </div>
     );
   };
 
@@ -255,78 +223,55 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
 
   return (
     <div className="flex flex-col h-full" onClick={() => setSelectedMsg(null)}>
-      {/* Header */}
-      <div className="glass-panel-strong px-3 py-2.5 flex items-center gap-3 border-b border-border/25 flex-shrink-0">
+      {/* Header - Pink bar */}
+      <div className="bg-primary px-3 py-2.5 flex items-center gap-3 flex-shrink-0">
         {onBack && (
-          <button onClick={onBack} className="p-1.5 rounded-xl hover:bg-muted/50 text-muted-foreground lg:hidden">
-            <ArrowLeft size={20} />
+          <button onClick={onBack} className="p-1.5 rounded-full hover:bg-primary-foreground/10 text-primary-foreground lg:hidden">
+            <ArrowLeft size={22} />
           </button>
         )}
 
-        <button onClick={onOpenInfo} className="flex items-center gap-3 flex-1 min-w-0 text-left hover:opacity-80 transition-opacity">
-          {chat.is_group ? (
-            <div className="relative w-10 h-10 flex-shrink-0">
-              {chat.members.slice(0, 2).map((m, i) => (
-                <div key={m.user_id}
-                  className={`absolute w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold border-2 border-background overflow-hidden ${i === 0 ? 'top-0 left-0 z-10' : 'bottom-0 right-0'}`}
-                  style={{ background: m.avatar_url ? undefined : `hsl(${avatarHue(m.display_name)}, 70%, 45%)` }}>
-                  {m.avatar_url ? <img src={m.avatar_url} alt="" className="w-full h-full object-cover" /> : m.display_name[0]?.toUpperCase()}
-                </div>
-              ))}
+        <button onClick={onOpenInfo} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+          {/* Avatar */}
+          <div className="relative flex-shrink-0">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold overflow-hidden bg-primary-foreground/20 text-primary-foreground"
+              style={{ background: (chat.is_group ? chat.group_avatar_url : chatMember?.avatar_url) ? undefined : `hsl(${avatarHue(chatName)}, 60%, 55%)` }}>
+              {(chat.is_group ? chat.group_avatar_url : chatMember?.avatar_url)
+                ? <img src={(chat.is_group ? chat.group_avatar_url : chatMember?.avatar_url) || ''} alt="" className="w-full h-full object-cover" />
+                : chatName[0]?.toUpperCase()}
             </div>
-          ) : (
-            <div className="relative flex-shrink-0">
-              <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold overflow-hidden"
-                style={{ background: chatMember?.avatar_url ? undefined : `hsl(${avatarHue(chatMember?.display_name || '')}, 70%, 45%)` }}>
-                {chatMember?.avatar_url
-                  ? <img src={chatMember.avatar_url} alt="" className="w-full h-full object-cover" />
-                  : chatMember?.display_name?.[0]?.toUpperCase() || '?'}
-              </div>
-              {isOnline && <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full status-online border-2 border-background" />}
-            </div>
-          )}
+            {isOnline && <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full status-online border-2 border-primary" />}
+          </div>
           <div className="min-w-0">
-            <h2 className="font-semibold text-sm truncate">{chatName}</h2>
-            <p className="text-xs text-muted-foreground flex items-center gap-1">
-              {typingUsers.length > 0
-                ? <span className="text-primary animate-pulse">typing...</span>
-                : <>
-                    {isOnline && <span className="w-1.5 h-1.5 rounded-full status-online inline-block" />}
-                    {statusText}
-                  </>
-              }
+            <h2 className="font-semibold text-sm text-primary-foreground truncate">{chatName}</h2>
+            <p className="text-xs text-primary-foreground/70">
+              {typingUsers.length > 0 ? 'typing...' : statusText}
             </p>
           </div>
         </button>
 
         <div className="flex items-center gap-0.5 flex-shrink-0">
-          <button onClick={() => onStartCall?.(chat, 'audio')}
-            className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-primary transition-colors">
-            <Phone size={18} />
-          </button>
           <button onClick={() => onStartCall?.(chat, 'video')}
-            className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-primary transition-colors">
-            <Video size={18} />
+            className="p-2 rounded-full hover:bg-primary-foreground/10 text-primary-foreground transition-colors">
+            <Video size={20} />
           </button>
-          <button className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors">
-            <MoreVertical size={18} />
+          <button onClick={() => onStartCall?.(chat, 'audio')}
+            className="p-2 rounded-full hover:bg-primary-foreground/10 text-primary-foreground transition-colors">
+            <Phone size={20} />
+          </button>
+          <button className="p-2 rounded-full hover:bg-primary-foreground/10 text-primary-foreground transition-colors">
+            <MoreVertical size={20} />
           </button>
         </div>
       </div>
 
-      {/* E2EE Banner */}
-      <div className="flex items-center justify-center gap-1.5 py-1 text-[10px] text-muted-foreground/40 flex-shrink-0">
-        <Lock size={9} />
-        <span>Messages are end-to-end encrypted</span>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-0.5">
+      {/* Messages - Chat wallpaper */}
+      <div className="flex-1 overflow-y-auto px-3 py-2 chat-wallpaper">
         {loading && (
           <div className="space-y-3 py-4">
             {[1,2,3,4].map(i => (
               <div key={i} className={`flex ${i % 2 === 0 ? 'justify-end' : 'justify-start'}`}>
-                <div className={`h-10 rounded-2xl shimmer ${i % 2 === 0 ? 'w-40' : 'w-52'}`} />
+                <div className={`h-10 rounded-2xl bg-muted animate-pulse ${i % 2 === 0 ? 'w-40' : 'w-52'}`} />
               </div>
             ))}
           </div>
@@ -334,10 +279,10 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
 
         {!loading && messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full py-16 text-center">
-            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-3 neon-glow-cyan">
+            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-3">
               <span className="text-2xl">👋</span>
             </div>
-            <p className="text-sm font-medium">Say hello!</p>
+            <p className="text-sm font-medium text-foreground">Say hello!</p>
             <p className="text-xs text-muted-foreground mt-1">Start your conversation</p>
           </div>
         )}
@@ -346,22 +291,15 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
           const isSent = group.senderId === currentUser.user_id;
           return (
             <div key={gi} className="space-y-0.5">
-              {group.msgs.map((msg, mi) =>
-                renderMessage(msg, isSent, mi === 0)
-              )}
+              {group.msgs.map((msg, mi) => renderMessage(msg, isSent, mi === 0))}
             </div>
           );
         })}
 
-        {/* Typing indicator */}
         {typingUsers.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex justify-start mt-1"
-          >
+          <div className="flex justify-start mt-1">
             <TypingDots names={typingUsers} />
-          </motion.div>
+          </div>
         )}
 
         <div ref={bottomRef} className="h-1" />
@@ -370,18 +308,12 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
       {/* Emoji Picker */}
       <AnimatePresence>
         {showEmoji && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
-            className="px-3 pb-1 flex-shrink-0"
-          >
-            <div className="glass-panel rounded-2xl p-3 flex flex-wrap gap-2">
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }} className="px-3 pb-1 flex-shrink-0 bg-background">
+            <div className="bg-card rounded-2xl p-3 flex flex-wrap gap-2 border border-border shadow-sm">
               {emojis.map(e => (
-                <button key={e}
-                  onClick={() => { setInput(p => p + e); setShowEmoji(false); textareaRef.current?.focus(); }}
-                  className="text-xl hover:scale-125 transition-transform p-0.5"
-                >{e}</button>
+                <button key={e} onClick={() => { setInput(p => p + e); setShowEmoji(false); textareaRef.current?.focus(); }}
+                  className="text-xl hover:scale-125 transition-transform p-0.5">{e}</button>
               ))}
             </div>
           </motion.div>
@@ -391,12 +323,9 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
       {/* Reply preview */}
       <AnimatePresence>
         {replyTo && (
-          <motion.div
-            initial={{ opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
+          <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 5 }}
-            className="mx-3 mb-1 px-3 py-2 rounded-xl glass-panel border-l-2 border-primary flex items-center gap-2 flex-shrink-0"
-          >
+            className="mx-3 mb-1 px-3 py-2 rounded-xl bg-card border border-border border-l-2 border-l-primary flex items-center gap-2 flex-shrink-0 shadow-sm">
             <Reply size={14} className="text-primary flex-shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-[10px] text-primary font-medium">{replyTo.sender?.display_name || 'Message'}</p>
@@ -409,60 +338,38 @@ const ChatArea = ({ chat, currentUser, onBack, onOpenInfo, onStartCall }: ChatAr
         )}
       </AnimatePresence>
 
-      {/* Input */}
-      <div className="p-3 pt-1 flex-shrink-0">
-        <div className="chat-input-area rounded-2xl flex items-end gap-1 px-2 py-1.5">
-          <button onClick={() => fileRef.current?.click()} disabled={uploading}
-            className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors flex-shrink-0">
-            {uploading
-              ? <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-              : <Paperclip size={18} />}
-          </button>
+      {/* Input - WhatsApp style */}
+      <div className="px-2 py-2 bg-background flex items-end gap-2 flex-shrink-0">
+        <div className="flex-1 flex items-end bg-card rounded-full border border-border px-2 py-1 shadow-sm">
           <button onClick={() => setShowEmoji(!showEmoji)}
-            className={`p-2 rounded-xl hover:bg-muted/50 transition-colors flex-shrink-0 ${showEmoji ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
-            <Smile size={18} />
+            className={`p-2 rounded-full transition-colors flex-shrink-0 ${showEmoji ? 'text-primary' : 'text-muted-foreground'}`}>
+            <Smile size={22} />
           </button>
 
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            placeholder="Type a message..."
-            rows={1}
+          <textarea ref={textareaRef} value={input} onChange={handleInputChange} onKeyDown={handleKeyDown}
+            placeholder="Type a message" rows={1}
             className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none py-2 max-h-32"
-            style={{ minHeight: '36px' }}
-          />
+            style={{ minHeight: '36px' }} />
 
-          <input ref={fileRef} type="file" className="hidden" onChange={handleFileSelect}
-            accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.txt,.zip" />
-
-          <AnimatePresence mode="wait">
-            {input.trim() ? (
-              <motion.button
-                key="send"
-                initial={{ scale: 0, rotate: -90 }}
-                animate={{ scale: 1, rotate: 0 }}
-                exit={{ scale: 0, rotate: 90 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-                onClick={handleSend}
-                className="p-2.5 rounded-xl bg-primary text-primary-foreground hover:opacity-90 transition-opacity flex-shrink-0 neon-glow-cyan"
-              >
-                <Send size={17} />
-              </motion.button>
-            ) : (
-              <motion.button
-                key="mic"
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                exit={{ scale: 0 }}
-                className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-primary transition-colors flex-shrink-0"
-              >
-                <Mic size={18} />
-              </motion.button>
-            )}
-          </AnimatePresence>
+          <button onClick={() => fileRef.current?.click()} disabled={uploading}
+            className="p-2 rounded-full text-muted-foreground hover:text-foreground transition-colors flex-shrink-0">
+            {uploading ? <div className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" /> : <Paperclip size={22} />}
+          </button>
         </div>
+
+        <input ref={fileRef} type="file" className="hidden" onChange={handleFileSelect}
+          accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.txt,.zip" />
+
+        {input.trim() ? (
+          <button onClick={handleSend}
+            className="w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-md flex-shrink-0">
+            <Send size={20} />
+          </button>
+        ) : (
+          <button className="w-12 h-12 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-md flex-shrink-0">
+            <Mic size={20} />
+          </button>
+        )}
       </div>
     </div>
   );

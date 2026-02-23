@@ -9,6 +9,7 @@ export type MessagePreview = {
   type: string;
   sender_id: string;
   created_at: string;
+  status: string | null;
 };
 
 export type ChatWithMeta = {
@@ -36,27 +37,14 @@ export const useChats = () => {
     fetchingRef.current = true;
 
     try {
-      // Get all chat_ids the current user belongs to
       const { data: memberRows, error: memberErr } = await supabase
-        .from('chat_members')
-        .select('chat_id')
-        .eq('user_id', user.id);
+        .from('chat_members').select('chat_id').eq('user_id', user.id);
 
-      if (memberErr) {
-        console.error('Error fetching chat memberships:', memberErr);
-        setLoading(false);
-        return;
-      }
-
-      if (!memberRows || memberRows.length === 0) {
-        setChats([]);
-        setLoading(false);
-        return;
-      }
+      if (memberErr) { console.error('Error fetching chat memberships:', memberErr); setLoading(false); return; }
+      if (!memberRows || memberRows.length === 0) { setChats([]); setLoading(false); return; }
 
       const chatIds = memberRows.map(r => r.chat_id);
 
-      // Parallel fetch: chats + all members
       const [chatsRes, allMembersRes] = await Promise.all([
         supabase.from('chats').select('*').in('id', chatIds).order('updated_at', { ascending: false }),
         supabase.from('chat_members').select('chat_id, user_id').in('chat_id', chatIds),
@@ -64,32 +52,33 @@ export const useChats = () => {
 
       const chatData = chatsRes.data;
       const allMembers = allMembersRes.data || [];
-
       if (!chatData) { setLoading(false); return; }
 
-      // Get all unique user IDs for profile fetch
       const memberUserIds = [...new Set(allMembers.map(m => m.user_id))];
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('user_id', memberUserIds);
+      const { data: profiles } = await supabase.from('profiles').select('*').in('user_id', memberUserIds);
 
-      // Get last messages (parallel, batched)
-      const lastMsgResults = await Promise.all(
-        chatIds.map(chatId =>
-          supabase
-            .from('messages')
-            .select('id, content, type, sender_id, created_at')
-            .eq('chat_id', chatId)
-            .order('created_at', { ascending: false })
-            .limit(1)
+      // Get last messages + unread counts
+      const [lastMsgResults, unreadResults] = await Promise.all([
+        Promise.all(chatIds.map(chatId =>
+          supabase.from('messages').select('id, content, type, sender_id, created_at, status')
+            .eq('chat_id', chatId).order('created_at', { ascending: false }).limit(1)
             .then(res => ({ chatId, msg: res.data?.[0] || null }))
-        )
-      );
+        )),
+        Promise.all(chatIds.map(chatId =>
+          supabase.from('messages').select('id', { count: 'exact', head: true })
+            .eq('chat_id', chatId).neq('sender_id', user.id).neq('status', 'read')
+            .then(res => ({ chatId, count: res.count || 0 }))
+        )),
+      ]);
 
       const lastMessages: Record<string, MessagePreview> = {};
       for (const { chatId, msg } of lastMsgResults) {
         if (msg) lastMessages[chatId] = msg as MessagePreview;
+      }
+
+      const unreadMap: Record<string, number> = {};
+      for (const { chatId, count } of unreadResults) {
+        unreadMap[chatId] = count;
       }
 
       const profileMap = new Map((profiles || []).map(p => [p.user_id, p as Profile]));
@@ -101,14 +90,12 @@ export const useChats = () => {
       }
 
       const result: ChatWithMeta[] = chatData.map(chat => ({
-        ...chat,
-        is_group: chat.is_group || false,
+        ...chat, is_group: chat.is_group || false,
         members: (memberMap.get(chat.id) || []).filter(p => p.user_id !== user.id),
         last_message: lastMessages[chat.id] || null,
-        unread_count: 0,
+        unread_count: unreadMap[chat.id] || 0,
       }));
 
-      // Sort by last message time or updated_at
       result.sort((a, b) => {
         const at = a.last_message?.created_at || a.updated_at || a.created_at;
         const bt = b.last_message?.created_at || b.updated_at || b.created_at;
@@ -116,12 +103,8 @@ export const useChats = () => {
       });
 
       setChats(result);
-    } catch (err) {
-      console.error('fetchChats error:', err);
-    } finally {
-      setLoading(false);
-      fetchingRef.current = false;
-    }
+    } catch (err) { console.error('fetchChats error:', err); }
+    finally { setLoading(false); fetchingRef.current = false; }
   }, [user]);
 
   useEffect(() => {
@@ -129,152 +112,68 @@ export const useChats = () => {
     fetchChats();
   }, [fetchChats, user]);
 
-  // Real-time subscription — debounced refetch to prevent spam
   useEffect(() => {
     if (!user) return;
-
     let debounceTimer: NodeJS.Timeout;
-    const debouncedFetch = () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(fetchChats, 400);
-    };
+    const debouncedFetch = () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(fetchChats, 400); };
 
-    // Remove existing channel before creating new one
-    if (channelRef.current) {
-      supabase.removeChannel(channelRef.current);
-    }
+    if (channelRef.current) supabase.removeChannel(channelRef.current);
 
     channelRef.current = supabase
       .channel(`chats-realtime-${user.id}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, debouncedFetch)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, debouncedFetch)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'chats' }, debouncedFetch)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_members' }, debouncedFetch)
-      .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR') {
-          // Reconnect after delay
-          setTimeout(() => {
-            if (channelRef.current) {
-              supabase.removeChannel(channelRef.current);
-              channelRef.current = null;
-            }
-          }, 5000);
-        }
-      });
+      .subscribe();
 
     return () => {
       clearTimeout(debounceTimer);
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
+      if (channelRef.current) { supabase.removeChannel(channelRef.current); channelRef.current = null; }
     };
   }, [user, fetchChats]);
 
   const createDirectChat = async (contactUserId: string): Promise<string | null> => {
     if (!user) return null;
-
     try {
-      // Check if DM already exists between these two users
-      const { data: myChats } = await supabase
-        .from('chat_members').select('chat_id').eq('user_id', user.id);
-      const { data: theirChats } = await supabase
-        .from('chat_members').select('chat_id').eq('user_id', contactUserId);
-
+      const { data: myChats } = await supabase.from('chat_members').select('chat_id').eq('user_id', user.id);
+      const { data: theirChats } = await supabase.from('chat_members').select('chat_id').eq('user_id', contactUserId);
       const myChatIds = new Set((myChats || []).map(r => r.chat_id));
       const sharedChats = (theirChats || []).filter(r => myChatIds.has(r.chat_id));
 
       for (const shared of sharedChats) {
-        const { data: chat } = await supabase
-          .from('chats').select('*').eq('id', shared.chat_id).single();
+        const { data: chat } = await supabase.from('chats').select('*').eq('id', shared.chat_id).single();
         if (chat && !chat.is_group) return shared.chat_id;
       }
 
-      // Create chat row first — created_by = auth.uid() is required by RLS
-      const { data: newChat, error: chatError } = await supabase
-        .from('chats')
-        .insert({
-          is_group: false,
-          created_by: user.id,
-        })
-        .select()
-        .single();
+      const { data: newChat, error: chatError } = await supabase.from('chats')
+        .insert({ is_group: false, created_by: user.id }).select().single();
+      if (chatError || !newChat) { console.error('Chat creation failed:', chatError); return null; }
 
-      if (chatError || !newChat) {
-        console.error('Chat creation failed:', chatError);
-        return null;
-      }
+      const { error: creatorErr } = await supabase.from('chat_members').insert({ chat_id: newChat.id, user_id: user.id, role: 'admin' });
+      if (creatorErr) { console.error('Creator member insert failed:', creatorErr); await supabase.from('chats').delete().eq('id', newChat.id); return null; }
 
-      // Insert creator first (this passes RLS: user_id = auth.uid())
-      const { error: creatorErr } = await supabase.from('chat_members').insert({
-        chat_id: newChat.id,
-        user_id: user.id,
-        role: 'admin',
-      });
-
-      if (creatorErr) {
-        console.error('Creator member insert failed:', creatorErr);
-        await supabase.from('chats').delete().eq('id', newChat.id);
-        return null;
-      }
-
-      // Now insert the other user — allowed by can_add_chat_member since creator is now admin
-      const { error: memberErr } = await supabase.from('chat_members').insert({
-        chat_id: newChat.id,
-        user_id: contactUserId,
-        role: 'member',
-      });
-
-      if (memberErr) {
-        console.error('Member insert failed:', memberErr);
-        // Don't rollback — at least we have the chat with creator
-        // The other user will just see it as a self-chat
-      }
+      await supabase.from('chat_members').insert({ chat_id: newChat.id, user_id: contactUserId, role: 'member' });
 
       await fetchChats();
       return newChat.id;
-    } catch (err) {
-      console.error('createDirectChat exception:', err);
-      return null;
-    }
+    } catch (err) { console.error('createDirectChat exception:', err); return null; }
   };
 
   const createGroupChat = async (name: string, memberIds: string[]): Promise<string | null> => {
     if (!user) return null;
-
     try {
-      const { data: newChat, error: chatError } = await supabase
-        .from('chats')
-        .insert({ is_group: true, group_name: name, created_by: user.id })
-        .select()
-        .single();
+      const { data: newChat, error: chatError } = await supabase.from('chats')
+        .insert({ is_group: true, group_name: name, created_by: user.id }).select().single();
+      if (chatError || !newChat) { console.error('Group creation failed:', chatError); return null; }
 
-      if (chatError || !newChat) {
-        console.error('Group chat creation failed:', chatError);
-        return null;
-      }
-
-      // Insert creator first
-      await supabase.from('chat_members').insert({
-        chat_id: newChat.id,
-        user_id: user.id,
-        role: 'admin',
-      });
-
-      // Insert other members one by one (more reliable than batch for RLS)
+      await supabase.from('chat_members').insert({ chat_id: newChat.id, user_id: user.id, role: 'admin' });
       for (const id of memberIds) {
-        await supabase.from('chat_members').insert({
-          chat_id: newChat.id,
-          user_id: id,
-          role: 'member',
-        });
+        await supabase.from('chat_members').insert({ chat_id: newChat.id, user_id: id, role: 'member' });
       }
-
       await fetchChats();
       return newChat.id;
-    } catch (err) {
-      console.error('createGroupChat exception:', err);
-      return null;
-    }
+    } catch (err) { console.error('createGroupChat exception:', err); return null; }
   };
 
   return { chats, loading, fetchChats, createDirectChat, createGroupChat };
